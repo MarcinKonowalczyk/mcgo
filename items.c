@@ -15,7 +15,7 @@
 #include <netinet/in.h>
 #include <errno.h>
 #include <event.h>
-#include <malloc.h>
+#include <stdlib.h>
 #include <Judy.h>
 
 
