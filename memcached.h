@@ -46,7 +46,7 @@ typedef struct _stritem {
     int flags;
     time_t time;    /* least recent access */
     time_t exptime; /* expire time */
-    void *end[0];
+    void *end[];
 } item;
 
 enum conn_states {

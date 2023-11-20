@@ -224,7 +224,11 @@ item_cachedump(unsigned int slabs_clsid, unsigned int limit, unsigned int *bytes
             break;
         if (!it)
             break;
+#ifdef __APPLE__
+        sprintf(temp, "ITEM %s [%u b; %ld s]\r\n", it->key, it->nbytes - 2, it->time);
+#else
         sprintf(temp, "ITEM %s [%u b; %u s]\r\n", it->key, it->nbytes - 2, it->time);
+#endif
         len = strlen(temp);
         if (bufcurr + len + 5 > memlimit) /* 5 is END\r\n */
             break;
@@ -254,9 +258,15 @@ item_stats(char *buffer, int buflen)
     }
 
     for (i = 0; i < LARGEST_ID; i++) {
-        if (tails[i])
+        if (tails[i]) {
+#ifdef __APPLE__
+            bufcurr += sprintf(bufcurr, "STAT items:%u:number %u\r\nSTAT items:%u:age %ld\r\n",
+                               i, sizes[i], i, now - tails[i]->time);
+#else
             bufcurr += sprintf(bufcurr, "STAT items:%u:number %u\r\nSTAT items:%u:age %u\r\n",
                                i, sizes[i], i, now - tails[i]->time);
+#endif
+        }
     }
     strcpy(bufcurr, "END");
     return;
@@ -267,7 +277,7 @@ char *
 item_stats_sizes(int *bytes)
 {
     int num_buckets = 32768; /* max 1MB object, divided into 32 bytes size buckets */
-    unsigned int *histogram = (int *)malloc(num_buckets * sizeof(int));
+    unsigned int *histogram = (unsigned int *)malloc(num_buckets * sizeof(int));
     char *buf = (char *)malloc(1024 * 1024 * 2 * sizeof(char));
     int i;
 

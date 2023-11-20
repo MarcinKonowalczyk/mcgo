@@ -34,6 +34,10 @@
 
 #include "memcached.h"
 
+#ifdef __APPLE__
+#include <spawn.h>
+#endif
+
 struct stats stats;
 struct settings settings;
 
@@ -54,7 +58,7 @@ void *
 assoc_find(char *key)
 {
     Word_t *PValue;
-    JSLG(PValue, PJSLArray, key);
+    JSLG(PValue, PJSLArray, (const uint8_t *)key);
     if (PValue) {
         return ((void *)*PValue);
     }
@@ -66,7 +70,7 @@ int
 assoc_insert(char *key, void *value)
 {
     Word_t *PValue;
-    JSLI(PValue, PJSLArray, key);
+    JSLI(PValue, PJSLArray, (const uint8_t *)key);
     if (PValue) {
         *PValue = (Word_t)value;
         return 1;
@@ -79,7 +83,7 @@ void
 assoc_delete(char *key)
 {
     int Rc_int;
-    JSLD(Rc_int, PJSLArray, key);
+    JSLD(Rc_int, PJSLArray, (const uint8_t *)key);
     return;
 }
 
@@ -242,9 +246,7 @@ conn_close(conn *c)
 void
 out_string(conn *c, char *str)
 {
-    int len;
-
-    len = strlen(str);
+    int len = strlen(str);
     if (len + 2 > c->wsize) {
         /* ought to be always enough. just fail for simplicity */
         str = "SERVER_ERROR output line too long";
@@ -333,7 +335,11 @@ process_stat(conn *c, char *command)
         char *pos = temp;
 
         pos += sprintf(pos, "STAT pid %u\r\n", pid);
+#ifdef __APPLE__
+        pos += sprintf(pos, "STAT uptime %ld\r\n", now - stats.started);
+#else
         pos += sprintf(pos, "STAT uptime %u\r\n", now - stats.started);
+#endif
         pos += sprintf(pos, "STAT curr_items %u\r\n", stats.curr_items);
         pos += sprintf(pos, "STAT total_items %u\r\n", stats.total_items);
         pos += sprintf(pos, "STAT bytes %llu\r\n", stats.curr_bytes);
@@ -347,7 +353,7 @@ process_stat(conn *c, char *command)
         pos += sprintf(pos, "STAT get_misses %u\r\n", stats.get_misses);
         pos += sprintf(pos, "STAT bytes_read %llu\r\n", stats.bytes_read);
         pos += sprintf(pos, "STAT bytes_written %llu\r\n", stats.bytes_written);
-        pos += sprintf(pos, "STAT limit_maxbytes %u\r\n", settings.maxbytes);
+        pos += sprintf(pos, "STAT limit_maxbytes %llu\r\n", settings.maxbytes);
         pos += sprintf(pos, "STAT limit_maxitems %u\r\n", settings.maxitems);
         pos += sprintf(pos, "END");
         out_string(c, temp);
@@ -476,15 +482,18 @@ process_command(conn *c, char *command)
         char key[256];
         int flags;
         time_t expire;
-        int len, res;
-        item *it;
+        int len;
 
-        res = sscanf(command, "%s %s %u %u %d\n", s_comm, key, &flags, &expire, &len);
+#ifdef __APPLE__
+        int res = sscanf(command, "%s %s %u %lu %d\n", s_comm, key, &flags, &expire, &len);
+#else
+        int res = sscanf(command, "%s %s %u %u %d\n", s_comm, key, &flags, &expire, &len);
+#endif
         if (res != 5 || strlen(key) == 0) {
             out_string(c, "CLIENT_ERROR bad command line format");
             return;
         }
-        it = item_alloc(key, flags, expire, len + 2);
+        item *it = item_alloc(key, flags, expire, len + 2);
         if (it == 0) {
             out_string(c, "SERVER_ERROR out of memory");
             /* swallow the data line */
@@ -505,21 +514,19 @@ process_command(conn *c, char *command)
         (strncmp(command, "decr ", 5) == 0)) {
         char temp[32];
         char s_comm[10];
-        unsigned int value;
-        item *it;
         unsigned int delta;
         char key[255];
-        int res;
         char *ptr;
+
+        int res = sscanf(command, "%s %s %u\n", s_comm, key, &delta);
         time_t now = time(0);
 
-        res = sscanf(command, "%s %s %u\n", s_comm, key, &delta);
         if (res != 3 || strlen(key) == 0) {
             out_string(c, "CLIENT_ERROR bad command line format");
             return;
         }
 
-        it = assoc_find(key);
+        item *it = assoc_find(key);
         if (it && (it->it_flags & ITEM_DELETED)) {
             it = 0;
         }
@@ -536,7 +543,7 @@ process_command(conn *c, char *command)
         ptr = it->data;
         while (*ptr && (*ptr < '0' && *ptr > '9')) ptr++;
 
-        value = atoi(ptr);
+        unsigned int value = atoi(ptr);
 
         if (incr)
             value += delta;
@@ -619,10 +626,9 @@ process_command(conn *c, char *command)
     if (strncmp(command, "delete ", 7) == 0) {
         char key[256];
         char *start = command + 7;
-        item *it;
 
         sscanf(start, " %s", key);
-        it = assoc_find(key);
+        item *it = assoc_find(key);
         if (!it) {
             out_string(c, "NOT_FOUND");
             return;
@@ -739,14 +745,17 @@ try_read_network(conn *c)
 int
 update_event(conn *c, int new_flags)
 {
-    if (c->ev_flags == new_flags)
+    if (c->ev_flags == new_flags) {
         return 1;
-    if (event_del(&c->event) == -1)
+    }
+    if (event_del(&c->event) == -1) {
         return 0;
+    }
     event_set(&c->event, c->sfd, new_flags, event_handler, (void *)c);
     c->ev_flags = new_flags;
-    if (event_add(&c->event, 0) == -1)
+    if (event_add(&c->event, 0) == -1) {
         return 0;
+    }
     return 1;
 }
 
@@ -1095,7 +1104,10 @@ delete_handler(int fd, short which, void *arg)
 {
     struct timeval t;
 
-    evtimer_del(&deleteevent);
+    printf("Running delete handler. %d items to delete\n", delcurr);
+    printf("fd: %d, which: %d, arg: %p\n", fd, which, arg);
+    if (deleteevent.ev_base)
+        evtimer_del(&deleteevent);
     evtimer_set(&deleteevent, delete_handler, 0);
     t.tv_sec = 5;
     t.tv_usec = 0;
@@ -1193,16 +1205,24 @@ main(int argc, char **argv)
     }
 
     /* initialize other stuff stuff */
+    printf("Initializing item\n");
     item_init();
+    printf("Initializing event\n");
     event_init();
+    printf("Initializing stats\n");
     stats_init();
+    printf("Initializing assoc\n");
     assoc_init();
+    printf("Initializing conn\n");
     conn_init();
+    printf("Initializing slabs\n");
     slabs_init(settings.maxbytes);
 
+    /* daemonize if requested */
+    printf("Daemonize\n");
     if (daemonize) {
-        int res;
-        res = daemon(0, 0);
+        // int res = daemon(0, 0);
+        int res = posix_spawn(0, 0, 0, 0, 0, 0);
         if (res == -1) {
             fprintf(stderr, "failed to fork() in order to daemonize\n");
             return 1;
@@ -1210,11 +1230,13 @@ main(int argc, char **argv)
     }
 
     /* lock paged memory if needed */
+    printf("Lock memory\n");
     if (lock_memory) {
         mlockall(MCL_CURRENT | MCL_FUTURE);
     }
 
     /* create the listening socket and bind it */
+    printf("Create socket\n");
     l_socket = server_socket(settings.port);
     if (l_socket == -1) {
         fprintf(stderr, "failed to listen\n");
@@ -1234,6 +1256,7 @@ main(int argc, char **argv)
     delete_handler(0, 0, 0); /* sets up the event */
 
     /* enter the loop */
+    printf("Entering loop\n");
     event_loop(0);
 
     return 0;
