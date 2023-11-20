@@ -60,7 +60,7 @@ enum conn_states {
 };
 
 #define NREAD_ADD 1
-#define NREAD_SET 2
+#define  NREAD_SET 2
 #define NREAD_REPLACE 3
 
 typedef struct {

@@ -237,7 +237,6 @@ char* item_stats_sizes(int *bytes) {
         if (histogram) free(histogram);
         if (buf) free(buf);
         return 0;
-        return;
     }
 
     /* build the histogram */

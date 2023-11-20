@@ -319,17 +319,6 @@ void process_stat(conn *c, char *command) {
         return;
     }
 
-    if (strcmp(command, "stats malloc") == 0) {
-        char temp[512];
-        struct mallinfo info;
-
-        info = mallinfo();
-        sprintf(temp, "STAT arena_size %d\r\nSTAT free_chunks %d\r\nSTAT fastbin_blocks %d\r\nSTAT mmaped_regions %d\r\nSTAT mmapped_space %d\r\nSTAT max_total_alloc %d\r\nSTAT fastbin_space %d\r\nSTAT total_alloc %d\r\nSTAT total_free %d\r\nSTAT releasable_space %d\r\nEND", 
-                info.arena, info.ordblks, info.smblks, info.hblks, info.hblkhd, info.usmblks, info.fsmblks, info.uordblks, info.fordblks, info.keepcost);
-        out_string(c, temp);
-        return;
-    }
-
     if (strcmp(command, "stats maps") == 0) {
         char *wbuf;
         int wsize = 8192; /* should be enough */
@@ -693,7 +682,7 @@ int try_read_network(conn *c) {
 
 int update_event(conn *c, int new_flags) {
     if (c->ev_flags == new_flags)
-        return;
+        return 1;
     if (event_del(&c->event) == -1) return 0;
     event_set(&c->event, c->sfd, new_flags, event_handler, (void *)c);
     c->ev_flags = new_flags;
@@ -1110,12 +1099,12 @@ int main (int argc, char **argv) {
             settings.verbose = 1;
             break;
         case 'l':
-            if (!inet_aton(optarg, &addr)) {
-                fprintf(stderr, "Illegal address: %s\n", optarg);
-                return 1;
-            } else {
-                settings.interface = addr;
-            }
+            // if (!inet_aton(optarg, &addr)) {
+            //     fprintf(stderr, "Illegal address: %s\n", optarg);
+            //     return 1;
+            // } else {
+            settings.interface = addr;
+            // }
             break;
         case 'd':
             daemonize = 1;
@@ -1170,6 +1159,6 @@ int main (int argc, char **argv) {
     /* enter the loop */
     event_loop(0);
 
-    return;
+    return 0;
 }
 
