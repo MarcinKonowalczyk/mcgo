@@ -77,9 +77,9 @@ int
 slabs_newslab(unsigned int id)
 {
     slabclass_t *p = &slabclass[id];
-    int num = p->perslab;
+    unsigned int num = p->perslab;
     int len = POWER_BLOCK;
-    int i;
+    unsigned int i;
     void **cur;
     void **new_slots;
     char *ptr;
@@ -149,7 +149,8 @@ slabs_free(void *ptr, unsigned int id)
 void
 slabs_stats(char *buffer, int buflen)
 {
-    int i, total;
+    int i;
+    unsigned int total = 0;
     char *bufcurr = buffer;
 
     if (buflen < 4096) {

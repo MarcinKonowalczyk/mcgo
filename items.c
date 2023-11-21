@@ -207,7 +207,7 @@ item_cachedump(unsigned int slabs_clsid, unsigned int limit, unsigned int *bytes
     int bufcurr;
     item *it;
     int len;
-    int shown = 0;
+    unsigned int shown = 0;
     char temp[256];
 
     if (slabs_clsid > LARGEST_ID)

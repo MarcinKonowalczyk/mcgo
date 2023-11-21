@@ -569,7 +569,7 @@ process_command(conn *c, char *command)
         }
         else { /* replace in-place */
             memcpy(it->data, temp, res);
-            memset(it->data + res, ' ', it->nbytes - res - 2);
+            memset((char *)(it->data) + res, ' ', it->nbytes - res - 2);
         }
         out_string(c, temp);
         return;
@@ -1156,9 +1156,9 @@ main(int argc, char **argv)
     int c;
     int l_socket;
     conn *l_conn;
-    struct in_addr addr;
     int lock_memory = 0;
     int daemonize = 0;
+    struct in_addr addr = {INADDR_ANY};
 
     /* init settings */
     settings_init();
