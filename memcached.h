@@ -177,13 +177,13 @@ settings_init(void);
 
 /* associative array */
 void
-assoc_init(void);
+judy_init(void);
 void *
-assoc_find(char *key);
+judy_find(char *key);
 int
-assoc_insert(char *key, void *value);
+judy_insert(char *key, void *value);
 void
-assoc_delete(char *key);
+judy_delete(char *key);
 
 void
 item_init(void);

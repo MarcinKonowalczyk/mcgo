@@ -1,4 +1,3 @@
-/* -*- Mode: C; tab-width: 4; c-basic-offset: 4; indent-tabs-mode: nil -*- */
 /*
  *  memcached - memory caching daemon
  *
@@ -38,36 +37,45 @@
 #include <spawn.h>
 #endif
 
-struct stats stats;
-struct settings settings;
-
 static item **todelete = 0;
 static int delcurr;
 static int deltotal;
 
-/* associative array, using Judy */
+//====================================
+//
+//      ##  ##   ##  #####  ##    ##
+//      ##  ##   ##  ##  ##  ##  ##
+//      ##  ##   ##  ##  ##   ####
+//  ##  ##  ##   ##  ##  ##    ##
+//   ####    #####   #####     ##
+//
+//====================================
+// associative array, using Judy
+// https://judy.sourceforge.net/doc/JudySL_3x.htm
+
 static Pvoid_t PJSLArray = (Pvoid_t)NULL;
 
 void
-assoc_init(void)
+judy_init(void)
 {
     return;
 }
 
 void *
-assoc_find(char *key)
+judy_find(char *key)
 {
     Word_t *PValue;
     JSLG(PValue, PJSLArray, (const uint8_t *)key);
     if (PValue) {
         return ((void *)*PValue);
     }
-    else
+    else {
         return 0;
+    }
 }
 
 int
-assoc_insert(char *key, void *value)
+judy_insert(char *key, void *value)
 {
     Word_t *PValue;
     JSLI(PValue, PJSLArray, (const uint8_t *)key);
@@ -75,23 +83,35 @@ assoc_insert(char *key, void *value)
         *PValue = (Word_t)value;
         return 1;
     }
-    else
+    else {
         return 0;
+    }
 }
 
 void
-assoc_delete(char *key)
+judy_delete(char *key)
 {
     int Rc_int;
     JSLD(Rc_int, PJSLArray, (const uint8_t *)key);
     return;
 }
 
+//====================================
+//                                    
+//   ####  ######  ###  ######  ####
+//  ##       ##   ## ##   ##   ##   
+//   ###     ##  ##   ##  ##    ### 
+//     ##    ##  #######  ##      ##
+//  ####     ##  ##   ##  ##   #### 
+//                                    
+//====================================
+
+struct stats stats;
+
 void
 stats_init(void)
 {
-    stats.curr_items = stats.total_items = stats.curr_conns = stats.total_conns =
-        stats.conn_structs = 0;
+    stats.curr_items = stats.total_items = stats.curr_conns = stats.total_conns = stats.conn_structs = 0;
     stats.get_cmds = stats.set_cmds = stats.get_hits = stats.get_misses = 0;
     stats.curr_bytes = stats.bytes_read = stats.bytes_written = 0;
     stats.started = time(0);
@@ -105,6 +125,18 @@ stats_reset(void)
     stats.bytes_read = stats.bytes_written = 0;
 }
 
+//===============================================================
+//                                                               
+//   ####  ######  ######  ######  ####  ##   ##   #####   ####
+//  ##     ##        ##      ##     ##   ###  ##  ##      ##   
+//   ###   #####     ##      ##     ##   #### ##  ##  ###  ### 
+//     ##  ##        ##      ##     ##   ## ####  ##   ##    ##
+//  ####   ######    ##      ##    ####  ##  ###   #####  #### 
+//                                                               
+//===============================================================
+
+struct settings settings;
+
 void
 settings_init(void)
 {
@@ -116,16 +148,19 @@ settings_init(void)
     settings.verbose = 0;
 }
 
-conn **freeconns;
-int freetotal;
-int freecurr;
+//================================================================================
+//                                                                                
+//   #####  ####   ##   ##  ##   ##  ######  #####  ######  ####  ####   ##   ##
+//  ##     ##  ##  ###  ##  ###  ##  ##     ##        ##     ##  ##  ##  ###  ##
+//  ##     ##  ##  #### ##  #### ##  #####  ##        ##     ##  ##  ##  #### ##
+//  ##     ##  ##  ## ####  ## ####  ##     ##        ##     ##  ##  ##  ## ####
+//   #####  ####   ##  ###  ##  ###  ######  #####    ##    ####  ####   ##  ###
+//                                                                                
+//================================================================================
 
 void
 conn_init(void)
 {
-    freetotal = 200;
-    freecurr = 0;
-    freeconns = (conn **)malloc(sizeof(conn *) * freetotal);
     return;
 }
 
@@ -134,37 +169,31 @@ conn_new(int sfd, int init_state, int event_flags)
 {
     conn *c;
 
-    /* do we have a free conn structure from a previous close? */
-    if (freecurr > 0) {
-        c = freeconns[--freecurr];
+    if (!(c = (conn *)malloc(sizeof(conn)))) {
+        perror("malloc()");
+        return 0;
     }
-    else { /* allocate a new one */
-        if (!(c = (conn *)malloc(sizeof(conn)))) {
-            perror("malloc()");
-            return 0;
-        }
-        c->rbuf = c->wbuf = 0;
-        c->ilist = 0;
+    c->rbuf = c->wbuf = 0;
+    c->ilist = 0;
 
-        c->rbuf = (char *)malloc(DATA_BUFFER_SIZE);
-        c->wbuf = (char *)malloc(DATA_BUFFER_SIZE);
-        c->ilist = (item **)malloc(sizeof(item *) * 200);
+    c->rbuf = (char *)malloc(DATA_BUFFER_SIZE);
+    c->wbuf = (char *)malloc(DATA_BUFFER_SIZE);
+    c->ilist = (item **)malloc(sizeof(item *) * 200);
 
-        if (c->rbuf == 0 || c->wbuf == 0 || c->ilist == 0) {
-            if (c->rbuf != 0)
-                free(c->rbuf);
-            if (c->wbuf != 0)
-                free(c->wbuf);
-            if (c->ilist != 0)
-                free(c->ilist);
-            free(c);
-            perror("malloc()");
-            return 0;
-        }
-        c->rsize = c->wsize = DATA_BUFFER_SIZE;
-        c->isize = 200;
-        stats.conn_structs++;
+    if (c->rbuf == 0 || c->wbuf == 0 || c->ilist == 0) {
+        if (c->rbuf != 0)
+            free(c->rbuf);
+        if (c->wbuf != 0)
+            free(c->wbuf);
+        if (c->ilist != 0)
+            free(c->ilist);
+        free(c);
+        perror("malloc()");
+        return 0;
     }
+    c->rsize = c->wsize = DATA_BUFFER_SIZE;
+    c->isize = 200;
+    stats.conn_structs++;
 
     c->sfd = sfd;
     c->state = init_state;
@@ -217,26 +246,10 @@ conn_close(conn *c)
         free(c->write_and_free);
     }
 
-    /* if we have enough space in the free connections array, put the structure
-     * there */
-    if (freecurr < freetotal) {
-        freeconns[freecurr++] = c;
-    }
-    else {
-        /* try to enlarge free connections array */
-        conn **new_freeconns = realloc(freeconns, sizeof(conn *) * freetotal * 2);
-        if (new_freeconns) {
-            freetotal *= 2;
-            freeconns = new_freeconns;
-            freeconns[freecurr++] = c;
-        }
-        else {
-            free(c->rbuf);
-            free(c->wbuf);
-            free(c->ilist);
-            free(c);
-        }
-    }
+    free(c->rbuf);
+    free(c->wbuf);
+    free(c->ilist);
+    free(c);
 
     stats.curr_conns--;
 
@@ -284,7 +297,7 @@ complete_nread(conn *c)
             break;
         }
 
-        old_it = (item *)assoc_find(it->key);
+        old_it = (item *)judy_find(it->key);
 
         if (old_it && old_it->exptime && old_it->exptime < now) {
             item_unlink(old_it);
@@ -526,7 +539,7 @@ process_command(conn *c, char *command)
             return;
         }
 
-        item *it = assoc_find(key);
+        item *it = judy_find(key);
         if (it && (it->it_flags & ITEM_DELETED)) {
             it = 0;
         }
@@ -586,7 +599,7 @@ process_command(conn *c, char *command)
         while (sscanf(start, " %s%n", key, &next) >= 1) {
             start += next;
             stats.get_cmds++;
-            it = (item *)assoc_find(key);
+            it = (item *)judy_find(key);
             if (it && (it->it_flags & ITEM_DELETED)) {
                 it = 0;
             }
@@ -628,7 +641,7 @@ process_command(conn *c, char *command)
         char *start = command + 7;
 
         sscanf(start, " %s", key);
-        item *it = assoc_find(key);
+        item *it = judy_find(key);
         if (!it) {
             out_string(c, "NOT_FOUND");
             return;
@@ -1212,7 +1225,7 @@ main(int argc, char **argv)
     printf("Initializing stats\n");
     stats_init();
     printf("Initializing assoc\n");
-    assoc_init();
+    judy_init();
     printf("Initializing conn\n");
     conn_init();
     printf("Initializing slabs\n");

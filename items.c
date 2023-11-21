@@ -150,7 +150,7 @@ item_link(item *it)
 {
     it->it_flags |= ITEM_LINKED;
     it->time = time(0);
-    assoc_insert(it->key, (void *)it);
+    judy_insert(it->key, (void *)it);
 
     stats.curr_bytes += it->ntotal;
     stats.curr_items += 1;
@@ -165,7 +165,7 @@ void
 item_unlink(item *it)
 {
     it->it_flags &= ~ITEM_LINKED;
-    assoc_delete(it->key);
+    judy_delete(it->key);
     item_unlink_q(it);
     stats.curr_bytes -= it->ntotal;
     stats.curr_items -= 1;
