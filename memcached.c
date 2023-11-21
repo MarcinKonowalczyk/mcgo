@@ -348,11 +348,7 @@ process_stat(conn *c, char *command)
         char *pos = temp;
 
         pos += sprintf(pos, "STAT pid %u\r\n", pid);
-#ifdef __APPLE__
         pos += sprintf(pos, "STAT uptime %ld\r\n", now - stats.started);
-#else
-        pos += sprintf(pos, "STAT uptime %u\r\n", now - stats.started);
-#endif
         pos += sprintf(pos, "STAT curr_items %u\r\n", stats.curr_items);
         pos += sprintf(pos, "STAT total_items %u\r\n", stats.total_items);
         pos += sprintf(pos, "STAT bytes %llu\r\n", stats.curr_bytes);
@@ -497,11 +493,7 @@ process_command(conn *c, char *command)
         time_t expire;
         int len;
 
-#ifdef __APPLE__
         int res = sscanf(command, "%s %s %u %lu %d\n", s_comm, key, &flags, &expire, &len);
-#else
-        int res = sscanf(command, "%s %s %u %u %d\n", s_comm, key, &flags, &expire, &len);
-#endif
         if (res != 5 || strlen(key) == 0) {
             out_string(c, "CLIENT_ERROR bad command line format");
             return;
