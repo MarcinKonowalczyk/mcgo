@@ -509,16 +509,17 @@ process_command(conn *c, char *command)
         (strncmp(command, "replace ", 8) == 0 && (comm = NREAD_REPLACE))) {
         char s_comm[10];
         char key[256];
-        int flags;
         time_t expire;
         int len;
 
-        int res = sscanf(command, "%s %s %u %lu %d\n", s_comm, key, &flags, &expire, &len);
-        if (res != 5 || strlen(key) == 0) {
+        int res = sscanf(command, "%s %s %lu %d\n", s_comm, key, &expire, &len);
+        printf("res %d, key %s, expire %lu, len %d\n", res, key, expire, len);
+        if (res != 4 || strlen(key) == 0) {
             out_string(c, "CLIENT_ERROR bad command line format");
             return;
         }
-        item *it = item_alloc(key, flags, expire, len + 2);
+        time_t now = time(0);
+        item *it = item_alloc(key, 0, now + expire, len + 2);
         if (it == 0) {
             out_string(c, "SERVER_ERROR out of memory");
             /* swallow the data line */
@@ -631,8 +632,9 @@ process_command(conn *c, char *command)
                     c->ilist = realloc(c->ilist, sizeof(item *) * c->isize);
                 }
             }
-            else
+            else {
                 stats.get_misses++;
+            }
         }
         c->icurr = c->ilist;
         c->ileft = i;
@@ -1034,7 +1036,9 @@ drive_machine(conn *c)
                             /* FALL THROUGH */
                         case 0:
                             it = *(c->icurr);
-                            sprintf(c->ibuf, "VALUE %s %u %u\r\n", it->key, it->flags,
+                            time_t now = time(0);
+                            time_t remaining = it->exptime - now;
+                            sprintf(c->ibuf, "VALUE %s %ld %u\r\n", it->key, remaining,
                                     it->nbytes - 2);
                             c->iptr = c->ibuf;
                             c->ibytes = strlen(c->iptr);
@@ -1203,41 +1207,38 @@ main(int argc, char **argv)
     /* process arguments */
     while ((c = getopt(argc, argv, "p:s:m:c:khvdl:")) != -1) {
         switch (c) {
-            case 'p':
+            case 'p': {
                 settings.port = atoi(optarg);
-                break;
-            case 's':
+            } break;
+            case 's': {
                 settings.maxitems = atoi(optarg);
-                break;
-            case 'm':
+            } break;
+            case 'm': {
                 settings.maxbytes = atoi(optarg) * 1024 * 1024;
-                break;
-            case 'c':
+            } break;
+            case 'c': {
                 settings.maxconns = atoi(optarg);
-                break;
-            case 'h':
+            } break;
+            case 'h': {
                 usage();
                 exit(0);
-            case 'k':
+            } break;
+            case 'k': {
                 lock_memory = 1;
-                break;
-            case 'v':
+            } break;
+            case 'v': {
                 settings.verbose = 1;
-                break;
-            case 'l':
-                // if (!inet_aton(optarg, &addr)) {
-                //     fprintf(stderr, "Illegal address: %s\n", optarg);
-                //     return 1;
-                // } else {
+            } break;
+            case 'l': {
                 settings.interface = addr;
-                // }
-                break;
-            case 'd':
+            } break;
+            case 'd': {
                 daemonize = 1;
-                break;
-            default:
+            } break;
+            default: {
                 fprintf(stderr, "Illegal argument \"%c\"\n", c);
                 return 1;
+            }
         }
     }
 
