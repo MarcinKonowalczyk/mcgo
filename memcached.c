@@ -38,8 +38,8 @@
 #endif
 
 static item **todelete = 0;
-static int delcurr;
-static int deltotal;
+static int delcurr = 0;
+static int deltotal = 200;
 
 //====================================
 //
@@ -168,12 +168,12 @@ conn_init(void)
 conn *
 conn_new(int sfd, int init_state, int event_flags)
 {
-    conn *c;
-
-    if (!(c = (conn *)malloc(sizeof(conn)))) {
+    conn *c = (conn *)malloc(sizeof(conn));
+    if (c == 0) {
         perror("malloc()");
         return 0;
     }
+
     c->rbuf = c->wbuf = 0;
     c->ilist = 0;
 
@@ -302,47 +302,56 @@ complete_nread(conn *c)
 
     stats.set_cmds++;
 
-    while (1) {
-        if (strncmp((char *)(it->data) + it->nbytes - 2, "\r\n", 2) != 0) {
-            out_string(c, "CLIENT_ERROR bad data chunk");
-            break;
-        }
-
-        old_it = (item *)judy_find(it->key);
-
-        if (old_it && old_it->exptime && old_it->exptime < now) {
-            item_unlink(old_it);
-            old_it = 0;
-        }
-
-        if (old_it && comm == NREAD_ADD) {
-            item_update(old_it);
-            out_string(c, "NOT_STORED");
-            break;
-        }
-
-        if (!old_it && comm == NREAD_REPLACE) {
-            out_string(c, "NOT_STORED");
-            break;
-        }
-
-        if (old_it && (old_it->it_flags & ITEM_DELETED) &&
-            (comm == NREAD_REPLACE || comm == NREAD_ADD)) {
-            out_string(c, "NOT_STORED");
-            break;
-        }
-
-        if (old_it) {
-            item_replace(old_it, it);
-        }
-        else
-            item_link(it);
-
-        c->item = 0;
-        out_string(c, "STORED");
-        return;
+    if (strncmp((char *)(it->data) + it->nbytes - 2, "\r\n", 2) != 0) {
+        out_string(c, "CLIENT_ERROR bad data chunk");
+        goto free_item;
     }
 
+    old_it = (item *)judy_find(it->key);
+
+    if (old_it && old_it->exptime && old_it->exptime < now) {
+        // Old item expired. We can't replace it.
+        item_unlink(old_it);
+        old_it = NULL;
+    }
+
+    if (old_it && comm == NREAD_ADD) {
+        // Old item exists, and command is "add"
+        item_update(old_it);
+        out_string(c, "NOT_STORED");
+        goto free_item;
+    }
+
+    if (!old_it && comm == NREAD_REPLACE) {
+        // No old item, and command is "replace"
+        out_string(c, "NOT_STORED");
+        goto free_item;
+    }
+
+    if (old_it && (old_it->it_flags & ITEM_DELETED) &&
+        (comm == NREAD_REPLACE || comm == NREAD_ADD)) {
+        // deleted item, and command is "replace" or "add"
+        out_string(c, "NOT_STORED");
+        goto free_item;
+    }
+
+    if (old_it) {
+        // we are replacing an existing item
+        item_replace(old_it, it);
+        goto stored_item;
+    }
+    else {
+        // we are adding a new item to the cache
+        item_link(it);
+        goto stored_item;
+    }
+
+stored_item:
+    c->item = 0;
+    out_string(c, "STORED");
+    return;
+
+free_item:
     item_free(it);
     c->item = 0;
     return;
@@ -726,8 +735,9 @@ try_read_network(conn *c)
         if (c->rbytes >= c->rsize) {
             char *new_rbuf = realloc(c->rbuf, c->rsize * 2);
             if (!new_rbuf) {
-                if (settings.verbose)
+                if (settings.verbose) {
                     fprintf(stderr, "Couldn't realloc input buffer\n");
+                }
                 c->rbytes = 0; /* ignore what we read */
                 out_string(c, "SERVER_ERROR out of memory");
                 c->write_and_go = conn_closing;
@@ -749,10 +759,12 @@ try_read_network(conn *c)
             return 1;
         }
         if (res == -1) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK)
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 break;
-            else
+            }
+            else {
                 return 0;
+            }
         }
     }
     return gotdata;
@@ -824,8 +836,9 @@ drive_machine(conn *c)
                 }
                 /* we have no command line and no data to read from network */
                 if (!update_event(c, EV_READ | EV_PERSIST)) {
-                    if (settings.verbose)
+                    if (settings.verbose) {
                         fprintf(stderr, "Couldn't update event\n");
+                    }
                     c->state = conn_closing;
                     break;
                 }
@@ -874,8 +887,9 @@ drive_machine(conn *c)
                     break;
                 }
                 /* otherwise we have a real error, on which we close the connection */
-                if (settings.verbose)
+                if (settings.verbose) {
                     fprintf(stderr, "Failed to read, and not due to blocking\n");
+                }
                 c->state = conn_closing;
                 break;
 
@@ -919,8 +933,9 @@ drive_machine(conn *c)
                     break;
                 }
                 /* otherwise we have a real error, on which we close the connection */
-                if (settings.verbose)
+                if (settings.verbose) {
                     fprintf(stderr, "Failed to read, and not due to blocking\n");
+                }
                 c->state = conn_closing;
                 break;
 
@@ -953,8 +968,9 @@ drive_machine(conn *c)
                 }
                 /* if res==0 or res==-1 and error is not EAGAIN or EWOULDBLOCK,
                    we have a real error, on which we close the connection */
-                if (settings.verbose)
+                if (settings.verbose) {
                     fprintf(stderr, "Failed to write, and not due to blocking\n");
+                }
                 c->state = conn_closing;
                 break;
             case conn_mwrite:
@@ -977,8 +993,9 @@ drive_machine(conn *c)
                     }
                     if (res == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                         if (!update_event(c, EV_WRITE | EV_PERSIST)) {
-                            if (settings.verbose)
+                            if (settings.verbose) {
                                 fprintf(stderr, "Couldn't update event\n");
+                            }
                             c->state = conn_closing;
                             break;
                         }
@@ -987,8 +1004,9 @@ drive_machine(conn *c)
                     }
                     /* if res==0 or res==-1 and error is not EAGAIN or EWOULDBLOCK,
                        we have a real error, on which we close the connection */
-                    if (settings.verbose)
+                    if (settings.verbose) {
                         fprintf(stderr, "Failed to write, and not due to blocking\n");
+                    }
                     c->state = conn_closing;
                     break;
                 }
@@ -1042,9 +1060,9 @@ drive_machine(conn *c)
 void
 event_handler(int fd, short which, void *arg)
 {
-    conn *c;
+    printf("Running event handler. fd: %d, which: %d, arg: %p\n", fd, which, arg);
+    conn *c = (conn *)arg;
 
-    c = (conn *)arg;
     c->which = which;
 
     /* sanity */
@@ -1115,18 +1133,20 @@ server_socket(int port)
 
 struct event deleteevent;
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 void
 delete_handler(int fd, short which, void *arg)
 {
-    struct timeval t;
+    // printf("Running delete handler\n");
+    // printf(" %d items to delete\n", delcurr);
 
-    printf("Running delete handler. %d items to delete\n", delcurr);
-    printf("fd: %d, which: %d, arg: %p\n", fd, which, arg);
-    if (deleteevent.ev_base)
+    // Reschedule oneself in another DELTA_DELETE_SECONDS
+    if (deleteevent.ev_base) {
         evtimer_del(&deleteevent);
+    }
     evtimer_set(&deleteevent, delete_handler, 0);
-    t.tv_sec = 5;
-    t.tv_usec = 0;
+    struct timeval t = {DELTA_DELETE_SECONDS, 0};
     evtimer_add(&deleteevent, &t);
 
     {
@@ -1147,6 +1167,7 @@ delete_handler(int fd, short which, void *arg)
 
     return;
 }
+#pragma GCC diagnostic pop
 
 void
 usage(void)
@@ -1221,21 +1242,14 @@ main(int argc, char **argv)
     }
 
     /* initialize other stuff stuff */
-    printf("Initializing item\n");
     item_init();
-    printf("Initializing event\n");
     event_init();
-    printf("Initializing stats\n");
     stats_init();
-    printf("Initializing assoc\n");
     judy_init();
-    printf("Initializing conn\n");
     conn_init();
-    printf("Initializing slabs\n");
     slabs_init(settings.maxbytes);
 
     /* daemonize if requested */
-    printf("Daemonize\n");
     if (daemonize) {
         // int res = daemon(0, 0);
         int res = posix_spawn(0, 0, 0, 0, 0, 0);
@@ -1246,13 +1260,11 @@ main(int argc, char **argv)
     }
 
     /* lock paged memory if needed */
-    printf("Lock memory\n");
     if (lock_memory) {
         mlockall(MCL_CURRENT | MCL_FUTURE);
     }
 
     /* create the listening socket and bind it */
-    printf("Create socket\n");
     l_socket = server_socket(settings.port);
     if (l_socket == -1) {
         fprintf(stderr, "failed to listen\n");
@@ -1266,13 +1278,11 @@ main(int argc, char **argv)
     }
 
     /* initialise deletion array and timer event */
-    deltotal = 200;
-    delcurr = 0;
     todelete = malloc(sizeof(item *) * deltotal);
     delete_handler(0, 0, 0); /* sets up the event */
 
     /* enter the loop */
-    printf("Entering loop\n");
+    printf("Entering main event loop\n");
     event_loop(0);
 
     return 0;

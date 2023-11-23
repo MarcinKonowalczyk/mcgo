@@ -1,6 +1,7 @@
 /* $Id$ */
 
 #define DATA_BUFFER_SIZE 2048
+#define DELTA_DELETE_SECONDS 5
 
 struct stats {
     unsigned int curr_items;
@@ -33,9 +34,9 @@ extern struct settings settings;
 #define ITEM_LINKED 1
 #define ITEM_DELETED 2
 
-typedef struct _stritem {
-    struct _stritem *next;
-    struct _stritem *prev;
+typedef struct _struct_item {
+    struct _struct_item *next;
+    struct _struct_item *prev;
     int refcount;
     int it_flags;
     char *key;
