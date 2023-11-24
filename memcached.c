@@ -504,6 +504,7 @@ process_command(conn *c, char *command)
      * directly into it, then continue in nread_complete().
      */
 
+    // printf("command: %s\n", command);
     if ((strncmp(command, "add ", 4) == 0 && (comm = NREAD_ADD)) ||
         (strncmp(command, "set ", 4) == 0 && (comm = NREAD_SET)) ||
         (strncmp(command, "replace ", 8) == 0 && (comm = NREAD_REPLACE))) {
@@ -511,15 +512,15 @@ process_command(conn *c, char *command)
         char key[256];
         time_t expire;
         int len;
+        int flags;
 
-        int res = sscanf(command, "%s %s %lu %d\n", s_comm, key, &expire, &len);
-        printf("res %d, key %s, expire %lu, len %d\n", res, key, expire, len);
-        if (res != 4 || strlen(key) == 0) {
+        int res = sscanf(command, "%s %s %u %lu %d\n", s_comm, key, &flags, &expire, &len);
+        if (res != 5 || strlen(key) == 0) {
             out_string(c, "CLIENT_ERROR bad command line format");
             return;
         }
         time_t now = time(0);
-        item *it = item_alloc(key, 0, now + expire, len + 2);
+        item *it = item_alloc(key, flags, now + expire, len + 2);
         if (it == 0) {
             out_string(c, "SERVER_ERROR out of memory");
             /* swallow the data line */
@@ -1064,7 +1065,6 @@ drive_machine(conn *c)
 void
 event_handler(int fd, short which, void *arg)
 {
-    printf("Running event handler. fd: %d, which: %d, arg: %p\n", fd, which, arg);
     conn *c = (conn *)arg;
 
     c->which = which;
