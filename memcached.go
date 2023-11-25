@@ -237,11 +237,32 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 	switch message_type {
 	case GET:
 		log("GET message")
+		if len(message_parts) < 2 {
+			// TODO: return error to client
+			panic("Wrong number of arguments for GET")
+		}
+		var key string = message_parts[1]
+		if len(key) == 0 {
+			panic("Key cannot be empty. This should not happen.")
+		}
+
+		data, ok := data[key]
+		if !ok {
+			// key not found
+			// TODO: check what is the correct response here
+			log("Key not found:", key)
+			conn.Write("END")
+		}
+
+		conn.Write("VALUE " + key + " " + strconv.Itoa(data.flags) + " " + strconv.Itoa(data.length))
+		conn.Write(data.data)
+		conn.Write("END")
+
 	case SET:
 		log("SET message")
 		if len(message_parts) < 5 {
-			log("Wrong number of arguments for SET")
-			return
+			// TODO: return error to client
+			panic("Wrong number of arguments for SET")
 		}
 		var key string = message_parts[1]
 		if len(key) == 0 {
