@@ -50,3 +50,5 @@ client.decr("hello", 5)
 assert client.get("hello") == b"13"
 client.delete("hello")
 assert client.get("hello") is None
+
+client.quit()

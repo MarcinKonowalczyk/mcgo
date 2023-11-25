@@ -49,3 +49,5 @@ try:
         thread.join()
 finally:
     stop_notification.set()
+
+client.quit()

@@ -1,4 +1,4 @@
-/* $Id$ */
+// +build ignore
 
 #include <Judy.h>
 #include <errno.h>

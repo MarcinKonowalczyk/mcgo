@@ -1,3 +1,5 @@
+// +build ignore
+
 /*
  *  memcached - memory caching daemon
  *
