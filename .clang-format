@@ -1,0 +1,18 @@
+# Clang-format from CPython repo
+# https://github.com/python/cpython/blob/main/Tools/peg_generator/.clang-format
+BasedOnStyle: Google
+AlwaysBreakAfterReturnType: All
+AllowShortIfStatementsOnASingleLine: false
+AlignAfterOpenBracket: Align
+BreakBeforeBraces: Stroustrup
+ColumnLimit: 95
+DerivePointerAlignment: false
+IndentWidth: 4
+Language: Cpp
+PointerAlignment: Right
+ReflowComments: true
+SpaceBeforeParens: ControlStatements
+SpacesInParentheses: false
+TabWidth: 4
+UseTab: Never
+SortIncludes: false
