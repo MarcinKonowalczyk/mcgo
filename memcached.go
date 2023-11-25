@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -9,8 +10,32 @@ import (
 
 const PORT = 11211
 
+// store all connections in a map
+var connections map[string]net.Conn
+
+var verbose *bool
+
 func main() {
+	// Parse command line arguments
+	verbose = flag.Bool("v", false, "Verbose mode")
+
+	flag.Parse()
+
+	log("Starting memcached server...")
+
+	// initialize map
+	connections = make(map[string]net.Conn)
+
 	port_listen(PORT)
+}
+
+func log(a ...any) {
+	if *verbose {
+		b := make([]any, len(a)+1)
+		b[0] = "[LOG]"
+		copy(b[1:], a)
+		fmt.Println(b...)
+	}
 }
 
 func port_listen(port int) {
@@ -27,12 +52,25 @@ func port_listen(port int) {
 			fmt.Println("Error accepting:", err.Error())
 			os.Exit(1)
 		}
+
+		connection_id := conn.RemoteAddr().String()
+		log("Connection from ", connection_id)
+		connections[connection_id] = conn
+
 		go handleConnection(conn)
-		fmt.Println("[LOG] Connection established")
 	}
 }
 
 func handleConnection(conn net.Conn) {
+	connection_id := conn.RemoteAddr().String()
+
+	// close connection when this function ends
+	defer log("Connection from", connection_id, "closed")
+	defer delete(connections, connection_id)
+	defer conn.Close()
+
+	log("Connection from", connection_id, "opened")
+
 	// TODO: handle messages longer than 1024 bytes
 	buf := make([]byte, 1024)
 
@@ -47,7 +85,7 @@ func handleConnection(conn net.Conn) {
 			// Still have to check for Ctrl-C or Ctrl-D
 			if len(message) == 1 && (message[0] == 6 || message[0] == 4) {
 				// Ctrl-C or Ctrl-D
-				fmt.Println("[LOG] Client closed connection")
+				log("Client closed connection")
 				break
 			}
 			continue
@@ -72,20 +110,18 @@ func handleConnection(conn net.Conn) {
 				continue
 			}
 
-			fmt.Println("[LOG] Message received:", string(message))
+			log("Message received:", string(message))
 		} else {
 			// Message is not terminated by \r\n
 			if byte_m1 == 6 || byte_m1 == 4 {
 				// Ctrl-C or Ctrl-D
-				fmt.Println("[LOG] Client closed connection")
+				log("Client closed connection")
 				break
 			} else {
 				// Some other message??
-				fmt.Println("[LOG] Raw bytes received:", message)
+				log("Raw bytes received:", message)
 			}
 		}
 		conn.Write([]byte("OK\n"))
 	}
-
-	conn.Close()
 }
