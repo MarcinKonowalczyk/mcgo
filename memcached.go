@@ -4,29 +4,30 @@ import (
 	"flag"
 	"fmt"
 	"net"
-	"os"
 	"strconv"
 )
 
-const PORT = 11211
+const DEFAULT_PORT = 11211
 
 // store all connections in a map
 var connections map[string]net.Conn
 
+// verbose mode of the server (print log messages)
 var verbose *bool
 
 func main() {
 	// Parse command line arguments
 	verbose = flag.Bool("v", false, "Verbose mode")
+	port := flag.Int("p", DEFAULT_PORT, "Port to listen on")
 
 	flag.Parse()
 
-	log("Starting memcached server...")
+	log("Starting memcached server")
 
 	// initialize map
 	connections = make(map[string]net.Conn)
 
-	port_listen(PORT)
+	portListen(*port)
 }
 
 func log(a ...any) {
@@ -38,19 +39,18 @@ func log(a ...any) {
 	}
 }
 
-func port_listen(port int) {
-	ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+// Listen on a port for incoming connections
+func portListen(port int) {
+	listener, err := net.Listen("tcp", ":"+strconv.Itoa(port))
 	if err != nil {
-		fmt.Println("Error listening:", err.Error())
-		os.Exit(1)
+		panic(err)
 	}
-	defer ln.Close()
+	defer listener.Close()
 
 	for {
-		conn, err := ln.Accept()
+		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Println("Error accepting:", err.Error())
-			os.Exit(1)
+			panic(err)
 		}
 
 		connection_id := conn.RemoteAddr().String()
@@ -61,6 +61,7 @@ func port_listen(port int) {
 	}
 }
 
+// Handle a connection
 func handleConnection(conn net.Conn) {
 	connection_id := conn.RemoteAddr().String()
 
