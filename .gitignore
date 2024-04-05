@@ -25,3 +25,4 @@ go.work
 .ruff_cache
 .DS_Store
 memcached
+__pycache__
