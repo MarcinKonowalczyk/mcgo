@@ -20,3 +20,8 @@
 # Go workspace file
 go.work
 .vscode
+
+.mypy_cache
+.ruff_cache
+.DS_Store
+memcached
