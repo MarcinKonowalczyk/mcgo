@@ -1,3 +1,13 @@
+# For Mac:
+# brew install libevent judy
+# Bash / Zsh:
+#   export CPATH=/opt/homebrew/include
+#   export LIBRARY_PATH=/opt/homebrew/lib
+#
+# Fish:
+#   set -x CPATH /opt/homebrew/include
+#   set -x LIBRARY_PATH /opt/homebrew/lib
+
 CC = gcc
 CFLAGS = -Wall -Wextra -Wshadow -pedantic -std=c99
 
