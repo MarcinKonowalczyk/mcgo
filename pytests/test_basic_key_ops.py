@@ -1,5 +1,17 @@
 from pymemcache.client.base import Client
 
+def test_version(client: Client) -> None:
+    result = client.version()
+    assert result is not None
+    print(f"Memcached version: {result.decode()}")
+
+
+def test_quit(client: Client) -> None:
+    assert client.sock is not None
+    client.quit()
+    assert client.sock is None
+
+
 def test_set_get_delete(client: Client) -> None:
     # Set a key
     client.set("some_key", "some_value")
