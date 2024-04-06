@@ -32,11 +32,14 @@ var data map[string]Data
 type MessageType string
 
 const (
-	GET    MessageType = "get"
-	SET    MessageType = "set"
-	DELETE MessageType = "delete"
-	QUIT   MessageType = "quit"
+	GET     MessageType = "get"
+	SET     MessageType = "set"
+	DELETE  MessageType = "delete"
+	QUIT    MessageType = "quit"
+	VERSION MessageType = "version"
 )
+
+const MCGO_VERSION = "go0.1.0"
 
 // A connection to a client. This struct is used to hold all the info needed
 // to handle a connection. We have the net.Conn object, the connection id
@@ -335,6 +338,10 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		log("QUIT message")
 		// NOTE: This will also stop the connection handler goroutine
 		conn.Close()
+
+	case VERSION:
+		log("VERSION message")
+		conn.Write("VERSION " + MCGO_VERSION)
 	default:
 		log("Unknown message type:", message_type)
 	}
@@ -370,8 +377,8 @@ func handleMessageWithContinuation(message string, conn *Conn) {
 		conn.expect_continuation = false
 
 		conn.Write("STORED")
-	case DELETE:
-		log("DELETE continuation")
+	case DELETE, QUIT, VERSION:
+		panic(fmt.Sprintf("Unexpected continuation for message type %s", conn.prev_message))
 	default:
 		log("Message continuation for unknown message type:", conn.prev_message)
 	}
