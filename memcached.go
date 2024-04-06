@@ -251,11 +251,11 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 			// key not found
 			// TODO: check what is the correct response here
 			log("Key not found:", key)
-			conn.Write("END")
+		} else {
+			conn.Write("VALUE " + key + " " + strconv.Itoa(data.flags) + " " + strconv.Itoa(data.length))
+			conn.Write(data.data)
 		}
 
-		conn.Write("VALUE " + key + " " + strconv.Itoa(data.flags) + " " + strconv.Itoa(data.length))
-		conn.Write(data.data)
 		conn.Write("END")
 
 	case SET:
@@ -311,6 +311,26 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 
 	case DELETE:
 		log("DELETE message")
+		if len(message_parts) < 2 {
+			// TODO: return error to client
+			panic("Wrong number of arguments for DELETE")
+		}
+		var key string = message_parts[1]
+		if len(key) == 0 {
+			panic("Key cannot be empty. This should not happen.")
+		}
+
+		_, ok := data[key]
+		if !ok {
+			// key not found
+			log("Key not found:", key)
+		} else {
+			log("Deleting key:", key)
+			delete(data, key)
+		}
+
+		conn.Write("DELETED")
+
 	case QUIT:
 		log("QUIT message")
 		// NOTE: This will also stop the connection handler goroutine
