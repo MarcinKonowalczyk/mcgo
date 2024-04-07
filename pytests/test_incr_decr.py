@@ -25,13 +25,8 @@ def test_decr_unsigned(client: Client) -> None:
     assert client.get("hello") == b"0"
 
     result = client.decr("hello", 4)
-    if is_go_impl(client):
-        # Go implementation allows signed integers
-        assert result == -4
-        assert client.get("hello") == b"-4"
-    else:
-        assert result == 0
-        assert client.get("hello") == b"0"
+    assert result == 0
+    assert client.get("hello") == b"0"
 
 
 def test_incr_decr_not_found(client: Client) -> None:
@@ -62,7 +57,7 @@ def test_incr_decr_noreply(client: Client) -> None:
     assert result == b"2"
 
 
-@pytest.mark.c_impl
+# @pytest.mark.c_impl
 def test_incr_decr_non_numeric_c(client: Client) -> None:
     """Test behaviour on incrementing and decrementing a non-numeric key. The key should be treated as 0."""
     client.set("hello", "abcd")
@@ -79,11 +74,11 @@ def test_incr_decr_non_numeric_c(client: Client) -> None:
     assert result == b"0   "
 
 
-@pytest.mark.go_impl
-def test_incr_decr_non_numeric_go(client: Client) -> None:
-    # INCR on non-numeric does not increment
-    client.set("hello", "abcd")
-    result = client.incr("hello", 2)
-    assert result is None
-    result = client.get("hello")
-    assert result == b"abcd"
+# @pytest.mark.go_impl
+# def test_incr_decr_non_numeric_go(client: Client) -> None:
+#     # INCR on non-numeric does not increment
+#     client.set("hello", "abcd")
+#     result = client.incr("hello", 2)
+#     assert result is None
+#     result = client.get("hello")
+#     assert result == b"abcd"
