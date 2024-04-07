@@ -8,6 +8,8 @@ SERVER = ("127.0.0.1", 11211)
 __file_dir__ = Path(__file__).resolve().parent
 __project_root__ = __file_dir__.parent
 
+def is_go_impl(client: Client) -> bool:
+    return client.version().startswith(b"go")
 
 @pytest.fixture
 def client() -> Client:
@@ -15,10 +17,11 @@ def client() -> Client:
     client.version() # Check if the server is running
     assert client.sock is not None
     return client
+
 try:
     _client = Client(SERVER, default_noreply=False)
-    _version = _client.version()
-    IS_GO_IMPLEMENTATION = _version.startswith(b"go")
+    _client.version()  # Check if the server is running
+    IS_GO_IMPLEMENTATION = is_go_impl(_client)
 
 except ConnectionRefusedError:
     # import subprocess
