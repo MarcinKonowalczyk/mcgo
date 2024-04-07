@@ -37,6 +37,8 @@ const (
 	DELETE  MessageType = "delete"
 	QUIT    MessageType = "quit"
 	VERSION MessageType = "version"
+	INCR    MessageType = "incr"
+	DECR    MessageType = "decr"
 )
 
 const MCGO_VERSION = "go0.1.0"
@@ -333,6 +335,41 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		}
 
 		conn.Write("DELETED")
+
+	case INCR, DECR:
+		if len(message_parts) < 3 {
+			panic("Wrong number of arguments for INCR/DECR")
+		}
+		is_incr := message_type == INCR
+		key := message_parts[1]
+		if len(key) == 0 {
+			panic("Key cannot be empty. This should not happen.")
+		}
+		amount, err := strconv.Atoi(message_parts[2])
+		if err != nil {
+			panic(err)
+		}
+
+		element, ok := data[key]
+		if !ok {
+			conn.Write("NOT_FOUND")
+		} else {
+			numeric, err := strconv.Atoi(element.data)
+			if err != nil {
+				log(fmt.Sprintf("Value for key '%s' is not numeric: %s", key, element.data))
+				conn.Write("NOT_FOUND")
+			} else {
+				if is_incr {
+					numeric += amount
+				} else {
+					numeric -= amount
+				}
+				element.data = strconv.Itoa(numeric)
+				element.length = len(element.data) // update length
+				data[key] = element
+				conn.Write(strconv.Itoa(numeric))
+			}
+		}
 
 	case QUIT:
 		log("QUIT message")
