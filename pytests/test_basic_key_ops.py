@@ -20,9 +20,19 @@ def test_set_get_delete(client: Client) -> None:
     assert result == b"some_value"
 
     # Delete the key
-    client.delete("some_key")
+    deleted = client.delete("some_key")
+    assert deleted is True
     result = client.get("some_key")
     assert result is None
+
+    deleted = client.delete("some_key")
+    assert deleted is False
+
+
+def test_delete_non_existent_key(client: Client) -> None:
+    client.delete("not_existent_key")
+    deleted = client.delete("not_existent_key")
+    assert deleted is False
 
 
 def test_key_not_found(client: Client) -> None:

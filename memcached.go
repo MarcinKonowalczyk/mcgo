@@ -147,9 +147,14 @@ func handleConnection(conn Conn) {
 		n, err := conn.Read(buf)
 		if err != nil {
 			// check if this is a read form a closed connection
-			if strings.Contains(err.Error(), "use of closed network connection") {
+			err_str := err.Error()
+			if strings.Contains(err_str, "use of closed network connection") {
 				break
-			} else if strings.Contains(err.Error(), "EOF") {
+			} else if strings.Contains(err_str, "connection reset by peer") {
+				// client closed connection
+				log("Client closed connection")
+				break
+			} else if strings.Contains(err_str, "EOF") {
 				// client closed connection
 				log("Client closed connection")
 				break
@@ -236,7 +241,6 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 	if len(message) < 1 {
 		panic("Empty message. Should not happen.")
 	}
-	message = strings.ToLower(message)
 	message_parts := strings.Split(message, " ")
 	message_type := MessageType(message_parts[0])
 	switch message_type {
@@ -244,7 +248,8 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		log("GET message")
 		if len(message_parts) < 2 {
 			// TODO: return error to client
-			panic("Wrong number of arguments for GET")
+			conn.Write("CLIENT_ERROR wrong number of arguments for 'get' command")
+			return
 		}
 		var key string = message_parts[1]
 		if len(key) == 0 {
@@ -253,9 +258,7 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 
 		data, ok := data[key]
 		if !ok {
-			// key not found
-			// TODO: check what is the correct response here
-			log("Key not found:", key)
+			// key not found. Just return END
 		} else {
 			conn.Write("VALUE " + key + " " + strconv.Itoa(data.flags) + " " + strconv.Itoa(data.length))
 			conn.Write(data.data)
@@ -266,8 +269,8 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 	case SET:
 		log("SET message")
 		if len(message_parts) < 5 {
-			// TODO: return error to client
-			panic("Wrong number of arguments for SET")
+			conn.Write("CLIENT_ERROR wrong number of arguments for 'set' command")
+			return
 		}
 		var key string = message_parts[1]
 		if len(key) == 0 {
@@ -275,21 +278,19 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		}
 		flags, err := strconv.Atoi(message_parts[2])
 		if err != nil {
-			// TODO: return error to client
-			panic(err)
+			conn.Write("CLIENT_ERROR invalid flags")
+			return
 		}
 
 		exptime, err := strconv.Atoi(message_parts[3])
 		if err != nil {
-			// TODO: return error to client
-			panic(err)
+			conn.Write("CLIENT_ERROR invalid exptime")
 		}
 
 		// var _length string = message_parts[4]
 		length, err := strconv.Atoi(message_parts[4])
 		if err != nil {
-			// TODO: return error to client
-			panic(err)
+			conn.Write("CLIENT_ERROR invalid length")
 		}
 
 		// TODO: don't ignore extra
@@ -317,8 +318,8 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 	case DELETE:
 		log("DELETE message")
 		if len(message_parts) < 2 {
-			// TODO: return error to client
-			panic("Wrong number of arguments for DELETE")
+			conn.Write("CLIENT_ERROR wrong number of arguments for 'delete' command")
+			return
 		}
 		var key string = message_parts[1]
 		if len(key) == 0 {
@@ -327,14 +328,13 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 
 		_, ok := data[key]
 		if !ok {
-			// key not found
 			log("Key not found:", key)
+			conn.Write("NOT_FOUND")
 		} else {
 			log("Deleting key:", key)
 			delete(data, key)
+			conn.Write("DELETED")
 		}
-
-		conn.Write("DELETED")
 
 	case INCR, DECR:
 		if len(message_parts) < 3 {

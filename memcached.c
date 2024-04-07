@@ -687,7 +687,19 @@ process_command(conn *c, char *command)
             out_string(c, "NOT_FOUND");
             return;
         }
+        else if (it->exptime && it->exptime < time(0)) {
+            // Expired
+            item_unlink(it);
+            out_string(c, "NOT_FOUND");
+            return;
+        }
+        else if (it->it_flags & ITEM_DELETED) {
+            // Already deleted
+            out_string(c, "NOT_FOUND");
+            return;
+        }
         else {
+            // Delete the item
             it->refcount++;
             /* use its expiration time as its deletion time now */
             it->exptime = time(0) + 4;
