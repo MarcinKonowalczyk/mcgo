@@ -341,6 +341,12 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 			panic("Wrong number of arguments for INCR/DECR")
 		}
 		is_incr := message_type == INCR
+		if is_incr {
+			log("INCR message")
+		} else {
+			log("DECR message")
+		}
+
 		key := message_parts[1]
 		if len(key) == 0 {
 			panic("Key cannot be empty. This should not happen.")
@@ -350,25 +356,41 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 			panic(err)
 		}
 
+		// check if we get noreply argument
+		var noreply bool = false
+		if len(message_parts) > 3 {
+			if message_parts[3] == "noreply" {
+				noreply = true
+			}
+		}
+
+		// check if key exists
 		element, ok := data[key]
 		if !ok {
 			conn.Write("NOT_FOUND")
+			return
+		}
+
+		numeric, err := strconv.Atoi(element.data)
+		if err != nil {
+			log(fmt.Sprintf("Value for key '%s' is not numeric: %s", key, element.data))
+			// Value is not numeric. Reply with "NOT_FOUND" and don't update the value
+			conn.Write("NOT_FOUND")
+			return
+		}
+
+		if is_incr {
+			numeric += amount
 		} else {
-			numeric, err := strconv.Atoi(element.data)
-			if err != nil {
-				log(fmt.Sprintf("Value for key '%s' is not numeric: %s", key, element.data))
-				conn.Write("NOT_FOUND")
-			} else {
-				if is_incr {
-					numeric += amount
-				} else {
-					numeric -= amount
-				}
-				element.data = strconv.Itoa(numeric)
-				element.length = len(element.data) // update length
-				data[key] = element
-				conn.Write(strconv.Itoa(numeric))
-			}
+			numeric -= amount
+		}
+		element.data = strconv.Itoa(numeric)
+		element.length = len(element.data) // update length
+		data[key] = element
+
+		if !noreply {
+			// Reply with the new value
+			conn.Write(strconv.Itoa(numeric))
 		}
 
 	case QUIT:
