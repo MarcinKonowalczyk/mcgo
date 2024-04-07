@@ -708,7 +708,7 @@ process_command(conn *c, char *command)
     }
 
     if (strcmp(command, "version") == 0) {
-        out_string(c, "VERSION 2.0");
+        out_string(c, "VERSION 2.0.1");
         return;
     }
 
