@@ -241,7 +241,6 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 	if len(message) < 1 {
 		panic("Empty message. Should not happen.")
 	}
-	message = strings.ToLower(message)
 	message_parts := strings.Split(message, " ")
 	message_type := MessageType(message_parts[0])
 	switch message_type {
