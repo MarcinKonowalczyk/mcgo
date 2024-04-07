@@ -351,11 +351,10 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		if len(key) == 0 {
 			panic("Key cannot be empty. This should not happen.")
 		}
-		signed_amount, err := strconv.Atoi(message_parts[2])
+		amount, err := strconv.Atoi(message_parts[2])
 		if err != nil {
 			panic(err)
 		}
-		amount := uint(signed_amount)
 
 		// check if we get noreply argument
 		var noreply bool = false
@@ -373,58 +372,25 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		}
 
 		// Pluck a number out of the data
-		buffer := ""
-		for i := 0; i < element.length; i++ {
-			if element.data[i] >= '0' && element.data[i] <= '9' {
-				buffer += string(element.data[i])
-			} else {
-				break
-			}
-		}
-		var numeric uint
-		if len(buffer) == 0 {
-			numeric = 0
-		} else {
-			signed_numeric, err := strconv.Atoi(buffer)
-			if err != nil {
-				// This should not happen since we're selecting only numeric characters
-				panic(err)
-			}
-			if signed_numeric < 0 {
-				// This should not happen since we're selecting only numeric characters
-				panic("Negative number found in data")
-			}
-			numeric = uint(signed_numeric)
+		numeric, err := strconv.Atoi(element.data)
+		if err != nil {
+			conn.Write("CLIENT_ERROR cannot increment or decrement non-numeric value")
+			return
 		}
 
 		if is_incr {
 			numeric += amount
 		} else {
-			if numeric < amount {
-				numeric = 0
-			} else {
-				numeric -= amount
-			}
+			numeric -= amount
 		}
-		new_data := strconv.Itoa(int(numeric))
-		new_length := len(new_data)
-		log("New data:", new_data, "New length:", new_length)
 
-		if new_length > element.length {
-			// Need to make a new element
-			new_element := Data{
-				flags:   element.flags,
-				exptime: element.exptime,
-				length:  new_length,
-				data:    new_data,
-			}
-			data[key] = new_element
-		} else {
-			// Just update the existing element. Might need to pad the data with spaces
-			// to keep the length the same
-			new_data = new_data + strings.Repeat(" ", element.length-new_length)
-			element.data = new_data
-			data[key] = element
+		new_data := strconv.Itoa(int(numeric))
+
+		data[key] = Data{
+			flags:   element.flags,
+			exptime: element.exptime,
+			length:  len(new_data),
+			data:    new_data,
 		}
 
 		if !noreply {
