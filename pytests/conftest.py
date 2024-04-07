@@ -11,7 +11,7 @@ __project_root__ = __file_dir__.parent
 
 @pytest.fixture
 def client() -> Client:
-    client = Client(SERVER, default_noreply=False)
+    client = Client(SERVER, default_noreply=False, timeout=1.0)
     client.version() # Check if the server is running
     assert client.sock is not None
     return client
