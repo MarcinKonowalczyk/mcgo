@@ -11,6 +11,6 @@ go run . -v
 
 Test:
 ```sh
-go test ./gotests
+cd gotests && go test && cd -
 pytest ./pytests
 ```
