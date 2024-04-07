@@ -14,3 +14,10 @@ Test:
 cd gotests && go test && cd -
 pytest ./pytests
 ```
+
+# ToDo's
+
+- [ ] expire items
+- [ ] LRU eviction
+- [ ] stats
+- [ ] distributed... ?
