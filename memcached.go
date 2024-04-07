@@ -147,9 +147,14 @@ func handleConnection(conn Conn) {
 		n, err := conn.Read(buf)
 		if err != nil {
 			// check if this is a read form a closed connection
-			if strings.Contains(err.Error(), "use of closed network connection") {
+			err_str := err.Error()
+			if strings.Contains(err_str, "use of closed network connection") {
 				break
-			} else if strings.Contains(err.Error(), "EOF") {
+			} else if strings.Contains(err_str, "connection reset by peer") {
+				// client closed connection
+				log("Client closed connection")
+				break
+			} else if strings.Contains(err_str, "EOF") {
 				// client closed connection
 				log("Client closed connection")
 				break
