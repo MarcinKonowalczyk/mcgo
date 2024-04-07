@@ -37,6 +37,8 @@ const (
 	DELETE  MessageType = "delete"
 	QUIT    MessageType = "quit"
 	VERSION MessageType = "version"
+	INCR    MessageType = "incr"
+	DECR    MessageType = "decr"
 )
 
 const MCGO_VERSION = "go0.1.0"
@@ -333,6 +335,68 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		}
 
 		conn.Write("DELETED")
+
+	case INCR, DECR:
+		if len(message_parts) < 3 {
+			panic("Wrong number of arguments for INCR/DECR")
+		}
+		is_incr := message_type == INCR
+		if is_incr {
+			log("INCR message")
+		} else {
+			log("DECR message")
+		}
+
+		key := message_parts[1]
+		if len(key) == 0 {
+			panic("Key cannot be empty. This should not happen.")
+		}
+		amount, err := strconv.Atoi(message_parts[2])
+		if err != nil {
+			panic(err)
+		}
+
+		// check if we get noreply argument
+		var noreply bool = false
+		if len(message_parts) > 3 {
+			if message_parts[3] == "noreply" {
+				noreply = true
+			}
+		}
+
+		// check if key exists
+		element, ok := data[key]
+		if !ok {
+			conn.Write("NOT_FOUND")
+			return
+		}
+
+		// Pluck a number out of the data
+		numeric, err := strconv.Atoi(element.data)
+		if err != nil {
+			conn.Write("CLIENT_ERROR cannot increment or decrement non-numeric value")
+			return
+		}
+
+		if is_incr {
+			numeric += amount
+		} else {
+			numeric -= amount
+		}
+
+		new_data := strconv.Itoa(int(numeric))
+
+		data[key] = Data{
+			flags:   element.flags,
+			exptime: element.exptime,
+			length:  len(new_data),
+			data:    new_data,
+		}
+
+		if !noreply {
+			// Reply with the new value
+			conn.Write(strconv.Itoa(int(numeric)))
+		}
 
 	case QUIT:
 		log("QUIT message")

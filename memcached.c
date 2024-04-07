@@ -541,7 +541,6 @@ process_command(conn *c, char *command)
 
     if ((strncmp(command, "incr ", 5) == 0 && (incr = 1)) ||
         (strncmp(command, "decr ", 5) == 0)) {
-        char temp[32];
         char s_comm[10];
         unsigned int delta;
         char key[255];
@@ -570,22 +569,51 @@ process_command(conn *c, char *command)
         }
 
         ptr = it->data;
-        while (*ptr && (*ptr < '0' && *ptr > '9')) ptr++;
 
-        unsigned int value = atoi(ptr);
+        // number format is [+-]?\d+.*\r\n
+        int i = 0;
+        if (*ptr == '-') {
+            ptr++;
+            i++;
+        }
+        else if (*ptr == '+') {
+            ptr++;
+            i++;
+        }
+
+        while (*ptr && *ptr != '\r') {
+            if (*ptr < '0' || *ptr > '9') {
+                out_string(c, "CLIENT_ERROR cannot increment or decrement non-numeric value");
+                return;
+            }
+            ptr++;
+            i++;
+        }
+
+        if (*ptr == '\0' || *(ptr + 1) != '\n') {
+            out_string(c, "CLIENT_ERROR cannot increment or decrement non-numeric value");
+            return;
+        }
+
+        // Back the pointer up to the start of the numeric string
+        ptr -= i;
+
+        int value = atoi(ptr);  // get the current value
 
         if (incr)
             value += delta;
         else {
-            if (delta >= value)
-                value = 0;
-            else
-                value -= delta;
+            value -= delta;
         }
 
-        sprintf(temp, "%u", value);
+        char temp[32];
+        sprintf(temp, "%d", value);
         res = strlen(temp);
-        if (res + 2 > it->nbytes) { /* need to realloc */
+        if (res == it->nbytes - 2) { /* replace in-place */
+            memcpy(it->data, temp, res);
+            memset((char *)(it->data) + res, ' ', it->nbytes - res - 2);
+        }
+        else { /* need to realloc */
             item *new_it;
             new_it = item_alloc(it->key, it->flags, it->exptime, res + 2);
             if (new_it == 0) {
@@ -595,10 +623,6 @@ process_command(conn *c, char *command)
             memcpy(new_it->data, temp, res);
             memcpy((char *)(new_it->data) + res, "\r\n", 2);
             item_replace(it, new_it);
-        }
-        else { /* replace in-place */
-            memcpy(it->data, temp, res);
-            memset((char *)(it->data) + res, ' ', it->nbytes - res - 2);
         }
         out_string(c, temp);
         return;
@@ -684,7 +708,7 @@ process_command(conn *c, char *command)
     }
 
     if (strcmp(command, "version") == 0) {
-        out_string(c, "VERSION 2.0");
+        out_string(c, "VERSION 2.0.1");
         return;
     }
 

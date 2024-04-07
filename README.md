@@ -8,3 +8,9 @@ Run in verbose mode:
 ```sh
 go run . -v
 ```
+
+Test:
+```sh
+cd gotests && go test && cd -
+pytest ./pytests
+```
