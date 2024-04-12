@@ -60,8 +60,6 @@ def test_incr_decr_not_found(client: Client) -> None:
     assert value is None
 
 
-# NOTE: This is implemented only in the Go version, since the C reference impl is too old
-@pytest.mark.go_impl
 def test_incr_decr_noreply(client: Client) -> None:
     """Test incrementing and decrementing with noreply=True."""
     client.set("hello", 1)
