@@ -545,14 +545,18 @@ process_command(conn *c, char *command)
         unsigned int delta;
         char key[255];
         char *ptr;
+        char s_noreply[8];
+        int noreply;
 
-        int res = sscanf(command, "%s %s %u\n", s_comm, key, &delta);
+        int res = sscanf(command, "%s %s %u %s\n", s_comm, key, &delta, s_noreply);
         time_t now = time(0);
 
-        if (res != 3 || strlen(key) == 0) {
+        if (!(res == 3 || res == 4) || strlen(key) == 0) {
             out_string(c, "CLIENT_ERROR bad command line format");
             return;
         }
+
+        noreply = (res == 4 && strcmp(s_noreply, "noreply") == 0) ? 1 : 0;
 
         item *it = judy_find(key);
         if (it && (it->it_flags & ITEM_DELETED)) {
@@ -624,7 +628,9 @@ process_command(conn *c, char *command)
             memcpy((char *)(new_it->data) + res, "\r\n", 2);
             item_replace(it, new_it);
         }
-        out_string(c, temp);
+        if (!noreply) {
+            out_string(c, temp);
+        }
         return;
     }
 
