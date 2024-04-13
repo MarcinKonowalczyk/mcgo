@@ -43,7 +43,7 @@ const (
 	STATS   MessageType = "stats"
 )
 
-const MCGO_VERSION = "go0.1.0"
+const MCGO_VERSION = "go0.2.0"
 
 // A connection to a client. This struct is used to hold all the info needed
 // to handle a connection. We have the net.Conn object, the connection id
