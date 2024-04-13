@@ -728,22 +728,32 @@ process_command(conn *c, char *command)
     if (strncmp(command, "delete ", 7) == 0) {
         char key[256];
         char *start = command + 7;
+        char s_noreply[8];
+        int noreply;
 
-        sscanf(start, " %s", key);
+        int res = sscanf(start, " %s %s\n", key, s_noreply);
+
+        if (res < 1 || strlen(key) == 0) {
+            out_string(c, "CLIENT_ERROR bad command line format");
+            return;
+        }
+
+        noreply = (res == 2 && strcmp(s_noreply, "noreply") == 0) ? 1 : 0;
+
         item *it = judy_find(key);
         if (!it) {
-            out_string(c, "NOT_FOUND");
+            maybe_out_string(c, "NOT_FOUND", !noreply);
             return;
         }
         else if (it->exptime && it->exptime < time(0)) {
             // Expired
             item_unlink(it);
-            out_string(c, "NOT_FOUND");
+            maybe_out_string(c, "NOT_FOUND", !noreply);
             return;
         }
         else if (it->it_flags & ITEM_DELETED) {
             // Already deleted
-            out_string(c, "NOT_FOUND");
+            maybe_out_string(c, "NOT_FOUND", !noreply);
             return;
         }
         else {
@@ -758,7 +768,7 @@ process_command(conn *c, char *command)
                 todelete = realloc(todelete, sizeof(item *) * deltotal);
             }
         }
-        out_string(c, "DELETED");
+        maybe_out_string(c, "DELETED", !noreply);
         return;
     }
 
