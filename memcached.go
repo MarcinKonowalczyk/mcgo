@@ -55,6 +55,7 @@ type Conn struct {
 	expect_continuation bool
 	prev_message        MessageType
 	prev_key            string
+	prev_noreply        bool
 }
 
 func (conn Conn) Write(a ...any) {
@@ -293,15 +294,12 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 			conn.Write("CLIENT_ERROR invalid length")
 		}
 
-		// TODO: don't ignore extra
-		var extra string = ""
+		// check if we get noreply argument
+		var noreply bool = false
 		if len(message_parts) > 5 {
-			// extra is optional
-			extra = message_parts[5]
-		}
-
-		if len(extra) > 0 {
-			log("Extra data in SET message:", extra)
+			if message_parts[5] == "noreply" {
+				noreply = true
+			}
 		}
 
 		data[key] = Data{
@@ -313,6 +311,7 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 
 		conn.prev_message = SET
 		conn.prev_key = key
+		conn.prev_noreply = noreply
 		conn.expect_continuation = true
 
 	case DELETE:
@@ -440,7 +439,9 @@ func handleMessageWithContinuation(message string, conn *Conn) {
 		}
 		conn.expect_continuation = false
 
-		conn.Write("STORED")
+		if !conn.prev_noreply {
+			conn.Write("STORED")
+		}
 	case DELETE, QUIT, VERSION:
 		panic(fmt.Sprintf("Unexpected continuation for message type %s", conn.prev_message))
 	default:
