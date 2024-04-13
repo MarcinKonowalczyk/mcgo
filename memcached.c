@@ -336,8 +336,6 @@ complete_nread(conn *c)
     item *old_it;
     time_t now = time(0);
 
-    fprintf(stdout, "complete_nread\n");
-
     stats.set_cmds++;
 
     if (strncmp((char *)(it->data) + it->nbytes - 2, "\r\n", 2) != 0) {
@@ -356,37 +354,38 @@ complete_nread(conn *c)
     if (old_it && comm == NREAD_ADD) {
         // Old item exists, and command is "add"
         item_update(old_it);
-        out_string(c, "NOT_STORED");
+        maybe_out_string(c, "NOT_STORED", !noreply);
         goto free_item;
     }
 
     if (!old_it && comm == NREAD_REPLACE) {
         // No old item, and command is "replace"
-        out_string(c, "NOT_STORED");
+        maybe_out_string(c, "NOT_STORED", !noreply);
         goto free_item;
     }
 
     if (old_it && (old_it->it_flags & ITEM_DELETED) &&
         (comm == NREAD_REPLACE || comm == NREAD_ADD)) {
         // deleted item, and command is "replace" or "add"
-        out_string(c, "NOT_STORED");
+        maybe_out_string(c, "NOT_STORED", !noreply);
         goto free_item;
     }
 
     if (old_it) {
         // we are replacing an existing item
         item_replace(old_it, it);
+        maybe_out_string(c, "STORED", !noreply);
         goto stored_item;
     }
     else {
         // we are adding a new item to the cache
         item_link(it);
+        maybe_out_string(c, "STORED", !noreply);
         goto stored_item;
     }
 
 stored_item:
     c->item = 0;
-    out_string(c, "STORED");
     return;
 
 free_item:
@@ -673,9 +672,7 @@ process_command(conn *c, char *command)
             memcpy((char *)(new_it->data) + res, "\r\n", 2);
             item_replace(it, new_it);
         }
-        if (!noreply) {
-            out_string(c, temp);
-        }
+        maybe_out_string(c, temp, !noreply);
         return;
     }
 
