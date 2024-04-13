@@ -21,9 +21,8 @@ pytest ./pytests
 - [ ] LRU eviction
 - [ ] stats
 - [ ] distributed... ?
-- [ ] full noreply support
-    - [ ] GET
-    - [ ] SET
-    - [ ] INCR/DECR
-    - [ ] DELETE
+- [x] full(er) noreply support
+    - [x] SET
+    - [x] INCR/DECR
+    - [x] DELETE
     

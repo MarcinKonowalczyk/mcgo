@@ -3,6 +3,8 @@
 #define DATA_BUFFER_SIZE 2048
 #define DELTA_DELETE_SECONDS 5
 
+#include <stdbool.h>
+
 struct stats {
     unsigned int curr_items;
     unsigned int total_items;
@@ -93,8 +95,9 @@ typedef struct {
      * data. The data is read into item->data to avoid extra copying.
      */
 
-    void *item;    /* for commands set/add/replace  */
-    int item_comm; /* which one is it: set/add/replace */
+    void *item;        /* for commands set/add/replace  */
+    int item_comm;     /* which one is it: set/add/replace */
+    bool item_noreply; /* noreply flag */
 
     /* data for the swallow state */
     int sbytes; /* how many bytes to swallow */
@@ -110,6 +113,9 @@ typedef struct {
     int ibytes;
 
 } conn;
+
+char *
+conn_state_to_str(enum conn_states state);
 
 /*
  * Functions
@@ -155,11 +161,11 @@ int
 new_socket(void);
 int
 server_socket(int port);
-int
+bool
 update_event(conn *c, int new_flags);
-int
+bool
 try_read_command(conn *c);
-int
+bool
 try_read_network(conn *c);
 void
 complete_nread(conn *c);

@@ -5,11 +5,11 @@ import random
 import string
 import time
 import threading
+from conftest import SERVER
+
 
 def random_string(n: int) -> str:
     return "".join(random.choices(string.ascii_uppercase + string.digits, k=n))
-
-from conftest import SERVER
 
 
 @pytest.fixture
@@ -22,7 +22,6 @@ def test_pooled_client(pool_client: PooledClient) -> None:
     pool_client.set("some_key", "some_value")
 
     N_WRITERS = 10
-
 
     def writer():
         N = 10_000

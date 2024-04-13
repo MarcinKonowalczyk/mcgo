@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/signal.h>
@@ -279,6 +280,39 @@ out_string(conn *c, char *str)
     return;
 }
 
+void
+maybe_out_string(conn *c, char *str, int do_out)
+{
+    if (do_out) {
+        out_string(c, str);
+    }
+    else {
+        c->state = conn_read;
+    }
+}
+
+char *
+conn_state_to_str(enum conn_states state)
+{
+    switch (state) {
+        case conn_listening:
+            return "conn_listening";
+        case conn_read:
+            return "conn_read";
+        case conn_nread:
+            return "conn_nread";
+        case conn_write:
+            return "conn_write";
+        case conn_closing:
+            return "conn_closing";
+        case conn_mwrite:
+            return "conn_mwrite";
+        case conn_swallow:
+            return "conn_swallow";
+        default:
+            return "unknown";
+    }
+}
 //=======================================================
 //
 //  #####   #####    ####    #####  ######   ####  ####
@@ -299,6 +333,7 @@ complete_nread(conn *c)
 {
     item *it = c->item;
     int comm = c->item_comm;
+    bool noreply = c->item_noreply;
     item *old_it;
     time_t now = time(0);
 
@@ -320,37 +355,38 @@ complete_nread(conn *c)
     if (old_it && comm == NREAD_ADD) {
         // Old item exists, and command is "add"
         item_update(old_it);
-        out_string(c, "NOT_STORED");
+        maybe_out_string(c, "NOT_STORED", !noreply);
         goto free_item;
     }
 
     if (!old_it && comm == NREAD_REPLACE) {
         // No old item, and command is "replace"
-        out_string(c, "NOT_STORED");
+        maybe_out_string(c, "NOT_STORED", !noreply);
         goto free_item;
     }
 
     if (old_it && (old_it->it_flags & ITEM_DELETED) &&
         (comm == NREAD_REPLACE || comm == NREAD_ADD)) {
         // deleted item, and command is "replace" or "add"
-        out_string(c, "NOT_STORED");
+        maybe_out_string(c, "NOT_STORED", !noreply);
         goto free_item;
     }
 
     if (old_it) {
         // we are replacing an existing item
         item_replace(old_it, it);
+        maybe_out_string(c, "STORED", !noreply);
         goto stored_item;
     }
     else {
         // we are adding a new item to the cache
         item_link(it);
+        maybe_out_string(c, "STORED", !noreply);
         goto stored_item;
     }
 
 stored_item:
     c->item = 0;
-    out_string(c, "STORED");
     return;
 
 free_item:
@@ -515,12 +551,18 @@ process_command(conn *c, char *command)
         time_t expire;
         int len;
         int flags;
+        char s_noreply[8];
+        bool noreply;
 
-        int res = sscanf(command, "%s %s %u %lu %d\n", s_comm, key, &flags, &expire, &len);
-        if (res != 5 || strlen(key) == 0) {
+        int res = sscanf(command, "%s %s %u %lu %d %s\n", s_comm, key, &flags, &expire, &len,
+                         s_noreply);
+        if (!(res == 5 || res == 6) || strlen(key) == 0) {
             out_string(c, "CLIENT_ERROR bad command line format");
             return;
         }
+
+        noreply = (res == 6 && strcmp(s_noreply, "noreply") == 0) ? 1 : 0;
+
         time_t now = time(0);
         item *it = item_alloc(key, flags, now + expire, len + 2);
         if (it == 0) {
@@ -531,8 +573,11 @@ process_command(conn *c, char *command)
             return;
         }
 
-        c->item_comm = comm;
+        // Set the item for the continuation
         c->item = it;
+        c->item_comm = comm;
+        c->item_noreply = noreply;
+
         c->rcurr = it->data;
         c->rlbytes = it->nbytes;
         c->state = conn_nread;
@@ -546,7 +591,7 @@ process_command(conn *c, char *command)
         char key[255];
         char *ptr;
         char s_noreply[8];
-        int noreply;
+        bool noreply;
 
         int res = sscanf(command, "%s %s %u %s\n", s_comm, key, &delta, s_noreply);
         time_t now = time(0);
@@ -628,9 +673,7 @@ process_command(conn *c, char *command)
             memcpy((char *)(new_it->data) + res, "\r\n", 2);
             item_replace(it, new_it);
         }
-        if (!noreply) {
-            out_string(c, temp);
-        }
+        maybe_out_string(c, temp, !noreply);
         return;
     }
 
@@ -686,22 +729,32 @@ process_command(conn *c, char *command)
     if (strncmp(command, "delete ", 7) == 0) {
         char key[256];
         char *start = command + 7;
+        char s_noreply[8];
+        bool noreply;
 
-        sscanf(start, " %s", key);
+        int res = sscanf(start, " %s %s\n", key, s_noreply);
+
+        if (res < 1 || strlen(key) == 0) {
+            out_string(c, "CLIENT_ERROR bad command line format");
+            return;
+        }
+
+        noreply = (res == 2 && strcmp(s_noreply, "noreply") == 0) ? 1 : 0;
+
         item *it = judy_find(key);
         if (!it) {
-            out_string(c, "NOT_FOUND");
+            maybe_out_string(c, "NOT_FOUND", !noreply);
             return;
         }
         else if (it->exptime && it->exptime < time(0)) {
             // Expired
             item_unlink(it);
-            out_string(c, "NOT_FOUND");
+            maybe_out_string(c, "NOT_FOUND", !noreply);
             return;
         }
         else if (it->it_flags & ITEM_DELETED) {
             // Already deleted
-            out_string(c, "NOT_FOUND");
+            maybe_out_string(c, "NOT_FOUND", !noreply);
             return;
         }
         else {
@@ -716,7 +769,7 @@ process_command(conn *c, char *command)
                 todelete = realloc(todelete, sizeof(item *) * deltotal);
             }
         }
-        out_string(c, "DELETED");
+        maybe_out_string(c, "DELETED", !noreply);
         return;
     }
 
@@ -743,16 +796,16 @@ process_command(conn *c, char *command)
  * if we have a complete line in the buffer, process it and move whatever
  * remains in the buffer to its beginning.
  */
-int
+bool
 try_read_command(conn *c)
 {
     char *el, *cont;
 
     if (!c->rbytes)
-        return 0;
+        return false;
     el = memchr(c->rbuf, '\n', c->rbytes);
     if (!el)
-        return 0;
+        return false;
     cont = el + 1;
     if (el - c->rbuf > 1 && *(el - 1) == '\r') {
         el--;
@@ -765,7 +818,7 @@ try_read_command(conn *c)
         memmove(c->rbuf, cont, c->rbytes - (cont - c->rbuf));
     }
     c->rbytes -= (cont - c->rbuf);
-    return 1;
+    return true;
 }
 
 /*
@@ -773,10 +826,10 @@ try_read_command(conn *c)
  * close.
  * return 0 if there's nothing to read on the first read.
  */
-int
+bool
 try_read_network(conn *c)
 {
-    int gotdata = 0;
+    bool gotdata = false;
     int res;
     while (1) {
         if (c->rbytes >= c->rsize) {
@@ -788,7 +841,7 @@ try_read_network(conn *c)
                 c->rbytes = 0; /* ignore what we read */
                 out_string(c, "SERVER_ERROR out of memory");
                 c->write_and_go = conn_closing;
-                return 1;
+                return true;
             }
             c->rbuf = new_rbuf;
             c->rsize *= 2;
@@ -796,48 +849,48 @@ try_read_network(conn *c)
         res = read(c->sfd, c->rbuf + c->rbytes, c->rsize - c->rbytes);
         if (res > 0) {
             stats.bytes_read += res;
-            gotdata = 1;
+            gotdata = true;
             c->rbytes += res;
             continue;
         }
         if (res == 0) {
             /* connection closed */
             c->state = conn_closing;
-            return 1;
+            return true;
         }
         if (res == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 break;
             }
             else {
-                return 0;
+                return false;
             }
         }
     }
     return gotdata;
 }
 
-int
+bool
 update_event(conn *c, int new_flags)
 {
     if (c->ev_flags == new_flags) {
-        return 1;
+        return true;
     }
     if (event_del(&c->event) == -1) {
-        return 0;
+        return false;
     }
     event_set(&c->event, c->sfd, new_flags, event_handler, (void *)c);
     c->ev_flags = new_flags;
     if (event_add(&c->event, 0) == -1) {
-        return 0;
+        return false;
     }
-    return 1;
+    return true;
 }
 
 void
 drive_machine(conn *c)
 {
-    int exit = 0;
+    bool exit = false;
     int sfd, flags = 1;
     socklen_t addrlen;
     struct sockaddr addr;
@@ -845,7 +898,7 @@ drive_machine(conn *c)
     int res;
 
     while (!exit) {
-        /*printf("state %d\n", c->state); */
+        // printf("state: %s\n", conn_state_to_str(c->state));
         switch (c->state) {
             case conn_listening:
                 addrlen = sizeof(addr);
@@ -871,7 +924,7 @@ drive_machine(conn *c)
                     close(sfd);
                     return;
                 }
-                exit = 1;
+                exit = true;
                 break;
 
             case conn_read:
@@ -889,7 +942,7 @@ drive_machine(conn *c)
                     c->state = conn_closing;
                     break;
                 }
-                exit = 1;
+                exit = true;
                 break;
 
             case conn_nread:
@@ -930,7 +983,7 @@ drive_machine(conn *c)
                         c->state = conn_closing;
                         break;
                     }
-                    exit = 1;
+                    exit = true;
                     break;
                 }
                 /* otherwise we have a real error, on which we close the connection */
@@ -976,7 +1029,7 @@ drive_machine(conn *c)
                         c->state = conn_closing;
                         break;
                     }
-                    exit = 1;
+                    exit = true;
                     break;
                 }
                 /* otherwise we have a real error, on which we close the connection */
@@ -1010,7 +1063,7 @@ drive_machine(conn *c)
                         c->state = conn_closing;
                         break;
                     }
-                    exit = 1;
+                    exit = true;
                     break;
                 }
                 /* if res==0 or res==-1 and error is not EAGAIN or EWOULDBLOCK,
@@ -1046,7 +1099,7 @@ drive_machine(conn *c)
                             c->state = conn_closing;
                             break;
                         }
-                        exit = 1;
+                        exit = true;
                         break;
                     }
                     /* if res==0 or res==-1 and error is not EAGAIN or EWOULDBLOCK,
@@ -1098,7 +1151,7 @@ drive_machine(conn *c)
 
             case conn_closing:
                 conn_close(c);
-                exit = 1;
+                exit = true;
                 break;
         }
     }

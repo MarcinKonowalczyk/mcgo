@@ -1,4 +1,3 @@
-import pytest
 from pymemcache.client.base import Client
 
 
@@ -38,4 +37,22 @@ def test_delete_non_existent_key(client: Client) -> None:
 def test_key_not_found(client: Client) -> None:
     # Test getting a key which never existed
     result = client.get("non_existent_key")
+    assert result is None
+
+
+def test_set_noreply(client: Client) -> None:
+    client.set("hello", "world", noreply=True)
+    result = client.get("hello")
+    assert result == b"world"
+
+
+def test_delete_noreply(client: Client) -> None:
+    client.set("hello", "world")
+    client.delete("hello", noreply=True)
+    result = client.get("hello")
+    assert result is None
+
+    # Delete again to test NOT_FOUND response
+    client.delete("hello", noreply=True)
+    result = client.get("hello")
     assert result is None
