@@ -161,11 +161,11 @@ int
 new_socket(void);
 int
 server_socket(int port);
-int
+bool
 update_event(conn *c, int new_flags);
-int
+bool
 try_read_command(conn *c);
-int
+bool
 try_read_network(conn *c);
 void
 complete_nread(conn *c);

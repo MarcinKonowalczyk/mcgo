@@ -796,16 +796,16 @@ process_command(conn *c, char *command)
  * if we have a complete line in the buffer, process it and move whatever
  * remains in the buffer to its beginning.
  */
-int
+bool
 try_read_command(conn *c)
 {
     char *el, *cont;
 
     if (!c->rbytes)
-        return 0;
+        return false;
     el = memchr(c->rbuf, '\n', c->rbytes);
     if (!el)
-        return 0;
+        return false;
     cont = el + 1;
     if (el - c->rbuf > 1 && *(el - 1) == '\r') {
         el--;
@@ -818,7 +818,7 @@ try_read_command(conn *c)
         memmove(c->rbuf, cont, c->rbytes - (cont - c->rbuf));
     }
     c->rbytes -= (cont - c->rbuf);
-    return 1;
+    return true;
 }
 
 /*
@@ -826,10 +826,10 @@ try_read_command(conn *c)
  * close.
  * return 0 if there's nothing to read on the first read.
  */
-int
+bool
 try_read_network(conn *c)
 {
-    int gotdata = 0;
+    bool gotdata = false;
     int res;
     while (1) {
         if (c->rbytes >= c->rsize) {
@@ -841,7 +841,7 @@ try_read_network(conn *c)
                 c->rbytes = 0; /* ignore what we read */
                 out_string(c, "SERVER_ERROR out of memory");
                 c->write_and_go = conn_closing;
-                return 1;
+                return true;
             }
             c->rbuf = new_rbuf;
             c->rsize *= 2;
@@ -849,48 +849,48 @@ try_read_network(conn *c)
         res = read(c->sfd, c->rbuf + c->rbytes, c->rsize - c->rbytes);
         if (res > 0) {
             stats.bytes_read += res;
-            gotdata = 1;
+            gotdata = true;
             c->rbytes += res;
             continue;
         }
         if (res == 0) {
             /* connection closed */
             c->state = conn_closing;
-            return 1;
+            return true;
         }
         if (res == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 break;
             }
             else {
-                return 0;
+                return false;
             }
         }
     }
     return gotdata;
 }
 
-int
+bool
 update_event(conn *c, int new_flags)
 {
     if (c->ev_flags == new_flags) {
-        return 1;
+        return true;
     }
     if (event_del(&c->event) == -1) {
-        return 0;
+        return false;
     }
     event_set(&c->event, c->sfd, new_flags, event_handler, (void *)c);
     c->ev_flags = new_flags;
     if (event_add(&c->event, 0) == -1) {
-        return 0;
+        return false;
     }
-    return 1;
+    return true;
 }
 
 void
 drive_machine(conn *c)
 {
-    int exit = 0;
+    bool exit = false;
     int sfd, flags = 1;
     socklen_t addrlen;
     struct sockaddr addr;
@@ -924,7 +924,7 @@ drive_machine(conn *c)
                     close(sfd);
                     return;
                 }
-                exit = 1;
+                exit = true;
                 break;
 
             case conn_read:
@@ -942,7 +942,7 @@ drive_machine(conn *c)
                     c->state = conn_closing;
                     break;
                 }
-                exit = 1;
+                exit = true;
                 break;
 
             case conn_nread:
@@ -983,7 +983,7 @@ drive_machine(conn *c)
                         c->state = conn_closing;
                         break;
                     }
-                    exit = 1;
+                    exit = true;
                     break;
                 }
                 /* otherwise we have a real error, on which we close the connection */
@@ -1029,7 +1029,7 @@ drive_machine(conn *c)
                         c->state = conn_closing;
                         break;
                     }
-                    exit = 1;
+                    exit = true;
                     break;
                 }
                 /* otherwise we have a real error, on which we close the connection */
@@ -1063,7 +1063,7 @@ drive_machine(conn *c)
                         c->state = conn_closing;
                         break;
                     }
-                    exit = 1;
+                    exit = true;
                     break;
                 }
                 /* if res==0 or res==-1 and error is not EAGAIN or EWOULDBLOCK,
@@ -1099,7 +1099,7 @@ drive_machine(conn *c)
                             c->state = conn_closing;
                             break;
                         }
-                        exit = 1;
+                        exit = true;
                         break;
                     }
                     /* if res==0 or res==-1 and error is not EAGAIN or EWOULDBLOCK,
@@ -1151,7 +1151,7 @@ drive_machine(conn *c)
 
             case conn_closing:
                 conn_close(c);
-                exit = 1;
+                exit = true;
                 break;
         }
     }
