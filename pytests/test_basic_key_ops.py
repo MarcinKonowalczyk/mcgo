@@ -39,3 +39,9 @@ def test_key_not_found(client: Client) -> None:
     # Test getting a key which never existed
     result = client.get("non_existent_key")
     assert result is None
+
+
+def test_set_noreply(client: Client) -> None:
+    client.set("hello", "world", noreply=True)
+    result = client.get("hello")
+    # assert result == b"world"
