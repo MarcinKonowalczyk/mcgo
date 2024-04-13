@@ -279,6 +279,16 @@ out_string(conn *c, char *str)
     return;
 }
 
+void
+maybe_out_string(conn *c, char *str, int do_out)
+{
+    if (do_out) {
+        out_string(c, str);
+    }
+    else {
+        c->state = conn_read;
+    }
+}
 
 char *
 conn_state_to_str(enum conn_states state)
