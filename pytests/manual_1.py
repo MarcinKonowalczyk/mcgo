@@ -1,4 +1,3 @@
-import pytest
 from pymemcache.client.base import Client
 
 import random
