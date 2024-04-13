@@ -112,6 +112,9 @@ typedef struct {
 
 } conn;
 
+char *
+conn_state_to_str(enum conn_states state);
+
 /*
  * Functions
  */

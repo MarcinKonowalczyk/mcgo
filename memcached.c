@@ -279,6 +279,29 @@ out_string(conn *c, char *str)
     return;
 }
 
+
+char *
+conn_state_to_str(enum conn_states state)
+{
+    switch (state) {
+        case conn_listening:
+            return "conn_listening";
+        case conn_read:
+            return "conn_read";
+        case conn_nread:
+            return "conn_nread";
+        case conn_write:
+            return "conn_write";
+        case conn_closing:
+            return "conn_closing";
+        case conn_mwrite:
+            return "conn_mwrite";
+        case conn_swallow:
+            return "conn_swallow";
+        default:
+            return "unknown";
+    }
+}
 //=======================================================
 //
 //  #####   #####    ####    #####  ######   ####  ####
@@ -857,7 +880,7 @@ drive_machine(conn *c)
     int res;
 
     while (!exit) {
-        /*printf("state %d\n", c->state); */
+        // printf("state: %s\n", conn_state_to_str(c->state));
         switch (c->state) {
             case conn_listening:
                 addrlen = sizeof(addr);
