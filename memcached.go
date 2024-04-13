@@ -73,6 +73,15 @@ func (conn Conn) Close() {
 
 var connections map[string]Conn
 
+func newConn(net_conn net.Conn, id string) Conn {
+	return Conn{
+		net_conn:            net_conn,
+		id:                  id,
+		expect_continuation: false,
+		prev_message:        GET, // This is just a dummy value
+		prev_key:            "",
+	}
+}
 func main() {
 	// Parse command line arguments
 	verbose = flag.Bool("v", false, "Verbose mode")
@@ -116,14 +125,7 @@ func portListen(port int) {
 		}
 
 		connection_id := net_conn.RemoteAddr().String()
-		conn := Conn{
-			net_conn:            net_conn,
-			id:                  connection_id,
-			expect_continuation: false,
-			prev_message:        GET, // This is just a dummy value
-			prev_key:            "",
-		}
-
+		conn := newConn(net_conn, connection_id)
 		connections[connection_id] = conn
 
 		go handleConnection(conn)
