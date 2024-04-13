@@ -22,8 +22,7 @@ pytest ./pytests
 - [ ] stats
 - [ ] distributed... ?
 - [ ] full noreply support
-    - [ ] GET
-    - [ ] SET
-    - [ ] INCR/DECR
+    - [x] SET
+    - [x] INCR/DECR
     - [ ] DELETE
     
