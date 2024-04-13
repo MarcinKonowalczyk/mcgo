@@ -255,7 +255,6 @@ item_cachedump(unsigned int slabs_clsid, unsigned int limit, unsigned int *bytes
 void
 item_stats(char *buffer, int buflen)
 {
-    int i;
     char *bufcurr = buffer;
     time_t now = time(0);
 
@@ -264,7 +263,7 @@ item_stats(char *buffer, int buflen)
         return;
     }
 
-    for (i = 0; i < LARGEST_ID; i++) {
+    for (int i = 0; i < LARGEST_ID; i++) {
         if (tails[i]) {
             bufcurr += sprintf(bufcurr, "STAT items:%u:number %u\r\nSTAT items:%u:age %ld\r\n",
                                i, sizes[i], i, now - tails[i]->time);
@@ -281,7 +280,6 @@ item_stats_sizes(int *bytes)
     int num_buckets = 32768; /* max 1MB object, divided into 32 bytes size buckets */
     unsigned int *histogram = (unsigned int *)malloc(num_buckets * sizeof(int));
     char *buf = (char *)malloc(1024 * 1024 * 2 * sizeof(char));
-    int i;
 
     if (histogram == 0 || buf == 0) {
         if (histogram) {
@@ -295,7 +293,7 @@ item_stats_sizes(int *bytes)
 
     /* build the histogram */
     memset(buf, 0, num_buckets * sizeof(int));
-    for (i = 0; i < LARGEST_ID; i++) {
+    for (int i = 0; i < LARGEST_ID; i++) {
         item *iter = heads[i];
         while (iter) {
             int bucket = iter->ntotal / 32;
@@ -311,7 +309,7 @@ item_stats_sizes(int *bytes)
 
     /* write the buffer */
     *bytes = 0;
-    for (i = 0; i < num_buckets; i++) {
+    for (int i = 0; i < num_buckets; i++) {
         if (histogram[i]) {
             *bytes += sprintf(&buf[*bytes], "%u %u\r\n", i * 32, histogram[i]);
         }

@@ -63,11 +63,10 @@ slabs_clsid(unsigned int size)
 void
 slabs_init(unsigned int limit)
 {
-    int i;
     int size = 1;
 
     mem_limit = limit;
-    for (i = 0; i <= POWER_LARGEST; i++, size *= 2) {
+    for (int i = 0; i <= POWER_LARGEST; i++, size *= 2) {
         slabclass[i].size = size;
         slabclass[i].perslab = POWER_BLOCK / size;
         slabclass[i].slots = 0;
@@ -81,8 +80,6 @@ slabs_newslab(unsigned int id)
     slabclass_t *p = &slabclass[id];
     unsigned int num = p->perslab;
     int len = POWER_BLOCK;
-    unsigned int i;
-    void **cur;
     void **new_slots;
     char *ptr;
 
@@ -100,6 +97,9 @@ slabs_newslab(unsigned int id)
     ptr = malloc(len);
     if (ptr == 0)
         return 0;
+
+    unsigned int i;
+    void **cur;
     for (i = 0, cur = p->slots; i < num; i++, cur++, ptr += p->size) {
         *cur = ptr;
     }
@@ -151,7 +151,6 @@ slabs_free(void *ptr, unsigned int id)
 void
 slabs_stats(char *buffer, int buflen)
 {
-    int i;
     unsigned int total = 0;
     char *bufcurr = buffer;
 
@@ -160,7 +159,7 @@ slabs_stats(char *buffer, int buflen)
         return;
     }
 
-    for (i = POWER_SMALLEST; i <= POWER_LARGEST; i++) {
+    for (int i = POWER_SMALLEST; i <= POWER_LARGEST; i++) {
         if (slabclass[i].slabs) {
             unsigned int perslab, slabs;
 
