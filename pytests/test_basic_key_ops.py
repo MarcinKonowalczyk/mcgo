@@ -45,3 +45,10 @@ def test_set_noreply(client: Client) -> None:
     client.set("hello", "world", noreply=True)
     result = client.get("hello")
     assert result == b"world"
+
+
+def test_delete_noreply(client: Client) -> None:
+    client.set("hello", "world")
+    client.delete("hello", noreply=True)
+    result = client.get("hello")
+    assert result is None
