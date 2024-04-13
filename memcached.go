@@ -325,14 +325,25 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 			panic("Key cannot be empty. This should not happen.")
 		}
 
+		var noreply bool = false
+		if len(message_parts) > 2 {
+			if message_parts[2] == "noreply" {
+				noreply = true
+			}
+		}
+
 		_, ok := data[key]
 		if !ok {
 			log("Key not found:", key)
-			conn.Write("NOT_FOUND")
+			if !noreply {
+				conn.Write("NOT_FOUND")
+			}
 		} else {
 			log("Deleting key:", key)
 			delete(data, key)
-			conn.Write("DELETED")
+			if !noreply {
+				conn.Write("DELETED")
+			}
 		}
 
 	case INCR, DECR:

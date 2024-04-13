@@ -52,3 +52,8 @@ def test_delete_noreply(client: Client) -> None:
     client.delete("hello", noreply=True)
     result = client.get("hello")
     assert result is None
+
+    # Delete again to test NOT_FOUND response
+    client.delete("hello", noreply=True)
+    result = client.get("hello")
+    assert result is None
