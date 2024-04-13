@@ -299,8 +299,11 @@ complete_nread(conn *c)
 {
     item *it = c->item;
     int comm = c->item_comm;
+    int noreply = c->item_noreply;
     item *old_it;
     time_t now = time(0);
+
+    fprintf(stdout, "complete_nread\n");
 
     stats.set_cmds++;
 
@@ -515,12 +518,18 @@ process_command(conn *c, char *command)
         time_t expire;
         int len;
         int flags;
+        char s_noreply[8];
+        int noreply;
 
-        int res = sscanf(command, "%s %s %u %lu %d\n", s_comm, key, &flags, &expire, &len);
-        if (res != 5 || strlen(key) == 0) {
+        int res = sscanf(command, "%s %s %u %lu %d %s\n", s_comm, key, &flags, &expire, &len,
+                         s_noreply);
+        if (!(res == 5 || res == 6) || strlen(key) == 0) {
             out_string(c, "CLIENT_ERROR bad command line format");
             return;
         }
+
+        noreply = (res == 6 && strcmp(s_noreply, "noreply") == 0) ? 1 : 0;
+
         time_t now = time(0);
         item *it = item_alloc(key, flags, now + expire, len + 2);
         if (it == 0) {
@@ -531,8 +540,11 @@ process_command(conn *c, char *command)
             return;
         }
 
-        c->item_comm = comm;
+        // Set the item for the continuation
         c->item = it;
+        c->item_comm = comm;
+        c->item_noreply = noreply;
+
         c->rcurr = it->data;
         c->rlbytes = it->nbytes;
         c->state = conn_nread;

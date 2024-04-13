@@ -93,8 +93,9 @@ typedef struct {
      * data. The data is read into item->data to avoid extra copying.
      */
 
-    void *item;    /* for commands set/add/replace  */
-    int item_comm; /* which one is it: set/add/replace */
+    void *item;       /* for commands set/add/replace  */
+    int item_comm;    /* which one is it: set/add/replace */
+    int item_noreply; /* noreply flag */
 
     /* data for the swallow state */
     int sbytes; /* how many bytes to swallow */
