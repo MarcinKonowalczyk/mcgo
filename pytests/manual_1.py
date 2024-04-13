@@ -11,6 +11,8 @@ def random_string(n: int) -> str:
 
 client = Client(("127.0.0.1", 11211), default_noreply=False)
 
+print(f"Version: {client.version().decode()}")
+
 N = 10_000
 data = {random_string(10): random_string(10).encode() for _ in range(N)}
 
@@ -35,12 +37,10 @@ print(
 )
 
 
-# stats = client.stats()
-# print("stats")
-# for key, value in stats.items():
-#     print(f"{key.decode()}: {value!r}")
-
-# print(client.version())
+stats = client.stats()
+print("stats")
+for key, value in stats.items():
+    print(f"{key.decode()}: {value!r}")
 
 # # test incr/decr
 # client.set("hello", 1)
