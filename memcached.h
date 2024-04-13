@@ -3,6 +3,8 @@
 #define DATA_BUFFER_SIZE 2048
 #define DELTA_DELETE_SECONDS 5
 
+#include <stdbool.h>
+
 struct stats {
     unsigned int curr_items;
     unsigned int total_items;
@@ -93,9 +95,9 @@ typedef struct {
      * data. The data is read into item->data to avoid extra copying.
      */
 
-    void *item;       /* for commands set/add/replace  */
-    int item_comm;    /* which one is it: set/add/replace */
-    int item_noreply; /* noreply flag */
+    void *item;        /* for commands set/add/replace  */
+    int item_comm;     /* which one is it: set/add/replace */
+    bool item_noreply; /* noreply flag */
 
     /* data for the swallow state */
     int sbytes; /* how many bytes to swallow */

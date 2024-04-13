@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/signal.h>
@@ -332,7 +333,7 @@ complete_nread(conn *c)
 {
     item *it = c->item;
     int comm = c->item_comm;
-    int noreply = c->item_noreply;
+    bool noreply = c->item_noreply;
     item *old_it;
     time_t now = time(0);
 
@@ -551,7 +552,7 @@ process_command(conn *c, char *command)
         int len;
         int flags;
         char s_noreply[8];
-        int noreply;
+        bool noreply;
 
         int res = sscanf(command, "%s %s %u %lu %d %s\n", s_comm, key, &flags, &expire, &len,
                          s_noreply);
@@ -590,7 +591,7 @@ process_command(conn *c, char *command)
         char key[255];
         char *ptr;
         char s_noreply[8];
-        int noreply;
+        bool noreply;
 
         int res = sscanf(command, "%s %s %u %s\n", s_comm, key, &delta, s_noreply);
         time_t now = time(0);
@@ -729,7 +730,7 @@ process_command(conn *c, char *command)
         char key[256];
         char *start = command + 7;
         char s_noreply[8];
-        int noreply;
+        bool noreply;
 
         int res = sscanf(start, " %s %s\n", key, s_noreply);
 
