@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/galsondor/go-ascii"
@@ -21,13 +22,15 @@ const DEFAULT_PORT = 11211
 var verbose *bool
 
 type Data struct {
-	flags   int
-	exptime int
-	length  int
-	data    string
+	flags      int
+	exptime    int
+	length     int
+	data       string
+	generation int
 }
 
-var data map[string]Data
+// var data map[string]Data
+var data sync.Map
 
 // enum for message types
 type MessageType string
@@ -119,7 +122,7 @@ func main() {
 	log("Starting memcached server")
 
 	connections = make(map[string]Conn)
-	data = make(map[string]Data)
+	data = sync.Map{}
 	stats = newStats(time.Now())
 
 	portListen(*port)
@@ -291,12 +294,17 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 			panic("Key cannot be empty. This should not happen.")
 		}
 
-		data, ok := data[key]
+		_datum, found := data[key]
+		datum, ok := _datum.(Data)
 		if !ok {
+			panic("Data not of type Data")
+		}
+
+		if !found {
 			stats.get_misses++
 		} else {
-			conn.Write("VALUE " + key + " " + strconv.Itoa(data.flags) + " " + strconv.Itoa(data.length))
-			conn.Write(data.data)
+			conn.Write("VALUE " + key + " " + strconv.Itoa(datum.flags) + " " + strconv.Itoa(datum.length))
+			conn.Write(datum.data)
 			stats.get_hits++
 		}
 
@@ -338,16 +346,19 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 			}
 		}
 
-		if _, ok := data[key]; !ok {
-			// new key
-			stats.total_items++
-		}
-
-		data[key] = Data{
+		new := Data{
 			flags:   flags,
 			exptime: exptime,
 			length:  length,
 			data:    "",
+		}
+
+		_, found := data.Swap(key, new)
+		if found {
+			// key already existed and got swapped
+		} else {
+			// new key
+			stats.total_items++
 		}
 
 		conn.prev_message = SET
@@ -373,14 +384,14 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 			}
 		}
 
-		if _, ok := data[key]; !ok {
+		_, found := data.LoadAndDelete(key)
+		if !found {
 			log("Key not found:", key)
 			if !noreply {
 				conn.Write("NOT_FOUND")
 			}
 		} else {
-			log("Deleting key:", key)
-			delete(data, key)
+			log("Deleted key:", key)
 			if !noreply {
 				conn.Write("DELETED")
 			}
@@ -414,6 +425,10 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 			}
 		}
 
+		// We have to manually lock the data map because we are reading and writing in two steps
+		data.Mutex.Lock()
+		defer data.Mutex.Unlock()
+
 		// check if key exists
 		element, ok := data[key]
 		if !ok {
@@ -435,13 +450,8 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		}
 
 		new_data := strconv.Itoa(int(numeric))
-
-		data[key] = Data{
-			flags:   element.flags,
-			exptime: element.exptime,
-			length:  len(new_data),
-			data:    new_data,
-		}
+		element.data = new_data
+		data.Store(key, element)
 
 		if !noreply {
 			// Reply with the new value
