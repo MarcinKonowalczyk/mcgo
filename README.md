@@ -17,10 +17,13 @@ pytest ./pytests
 
 # ToDo's
 
+- [ ] stats
 - [ ] expire items
 - [ ] LRU eviction
-- [ ] stats
 - [ ] distributed... ?
+
+# Done's
+
 - [x] full(er) noreply support
     - [x] SET
     - [x] INCR/DECR
