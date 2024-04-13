@@ -22,6 +22,9 @@ pytest ./pytests
 - [ ] LRU eviction
 - [ ] distributed... ?
 
+- [ ] tests in other python libraries
+- [ ] go tests
+
 # Done's
 
 - [x] full(er) noreply support
