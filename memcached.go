@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -39,9 +40,10 @@ const (
 	VERSION MessageType = "version"
 	INCR    MessageType = "incr"
 	DECR    MessageType = "decr"
+	STATS   MessageType = "stats"
 )
 
-const MCGO_VERSION = "go0.1.0"
+const MCGO_VERSION = "go0.2.0"
 
 // A connection to a client. This struct is used to hold all the info needed
 // to handle a connection. We have the net.Conn object, the connection id
@@ -73,6 +75,40 @@ func (conn Conn) Close() {
 
 var connections map[string]Conn
 
+func newConn(net_conn net.Conn, id string) Conn {
+	return Conn{
+		net_conn:            net_conn,
+		id:                  id,
+		expect_continuation: false,
+		prev_message:        GET, // This is just a dummy value
+		prev_key:            "",
+	}
+}
+
+type Stats struct {
+	// curr_items uint64 // calculated from data map
+	total_items uint64 // not implemented
+	// curr_bytes uint64 // calculated from data map
+	// total_bytes uint64 // not implemented
+	// curr_conns  uint      // done(?)
+	total_conns uint      // done(?)
+	get_cmds    uint      // done(?)
+	set_cmds    uint      // done(?)
+	get_hits    uint      // done(?)
+	get_misses  uint      // done(?)
+	started     time.Time // done(?)
+	// bytes_read    uint64
+	// bytes_written uint64
+}
+
+var stats Stats
+
+func newStats(now time.Time) Stats {
+	return Stats{
+		started: now,
+	}
+}
+
 func main() {
 	// Parse command line arguments
 	verbose = flag.Bool("v", false, "Verbose mode")
@@ -82,9 +118,9 @@ func main() {
 
 	log("Starting memcached server")
 
-	// initialize map
 	connections = make(map[string]Conn)
 	data = make(map[string]Data)
+	stats = newStats(time.Now())
 
 	portListen(*port)
 }
@@ -116,14 +152,7 @@ func portListen(port int) {
 		}
 
 		connection_id := net_conn.RemoteAddr().String()
-		conn := Conn{
-			net_conn:            net_conn,
-			id:                  connection_id,
-			expect_continuation: false,
-			prev_message:        GET, // This is just a dummy value
-			prev_key:            "",
-		}
-
+		conn := newConn(net_conn, connection_id)
 		connections[connection_id] = conn
 
 		go handleConnection(conn)
@@ -134,10 +163,14 @@ func portListen(port int) {
 // of the connection and removes it from the connections map when it
 // is done.
 func handleConnection(conn Conn) {
+
 	// close connection when this function ends
 	defer log("Connection from", conn.id, "closed")
 	defer delete(connections, conn.id)
 	defer conn.Close()
+
+	// Increment connection stats
+	stats.total_conns++
 
 	log("Connection from", conn.id, "opened")
 
@@ -247,6 +280,7 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 	switch message_type {
 	case GET:
 		log("GET message")
+		stats.get_cmds++
 		if len(message_parts) < 2 {
 			// TODO: return error to client
 			conn.Write("CLIENT_ERROR wrong number of arguments for 'get' command")
@@ -259,16 +293,18 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 
 		data, ok := data[key]
 		if !ok {
-			// key not found. Just return END
+			stats.get_misses++
 		} else {
 			conn.Write("VALUE " + key + " " + strconv.Itoa(data.flags) + " " + strconv.Itoa(data.length))
 			conn.Write(data.data)
+			stats.get_hits++
 		}
 
 		conn.Write("END")
 
 	case SET:
 		log("SET message")
+		stats.set_cmds++
 		if len(message_parts) < 5 {
 			conn.Write("CLIENT_ERROR wrong number of arguments for 'set' command")
 			return
@@ -302,6 +338,11 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 			}
 		}
 
+		if _, ok := data[key]; !ok {
+			// new key
+			stats.total_items++
+		}
+
 		data[key] = Data{
 			flags:   flags,
 			exptime: exptime,
@@ -332,8 +373,7 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 			}
 		}
 
-		_, ok := data[key]
-		if !ok {
+		if _, ok := data[key]; !ok {
 			log("Key not found:", key)
 			if !noreply {
 				conn.Write("NOT_FOUND")
@@ -416,6 +456,28 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 	case VERSION:
 		log("VERSION message")
 		conn.Write("VERSION " + MCGO_VERSION)
+
+	case STATS:
+		log("STATS message")
+
+		curr_bytes := 0
+		for _, d := range data {
+			curr_bytes += d.length
+		}
+
+		conn.Write("STAT pid ", os.Getpid())
+		conn.Write("STAT uptime ", time.Since(stats.started).Seconds())
+		conn.Write("STAT curr_items ", len(data))
+		conn.Write("STAT total_items ", stats.total_items)
+		conn.Write("STAT bytes ", curr_bytes)
+		conn.Write("STAT curr_connections ", len(connections)-1) // ignore listening conn
+		conn.Write("STAT total_connections ", stats.total_conns)
+		conn.Write("STAT cmd_get ", stats.get_cmds)
+		conn.Write("STAT cmd_set ", stats.set_cmds)
+		conn.Write("STAT get_hits ", stats.get_hits)
+		conn.Write("STAT get_misses ", stats.get_misses)
+		conn.Write("END")
+
 	default:
 		log("Unknown message type:", message_type)
 	}
