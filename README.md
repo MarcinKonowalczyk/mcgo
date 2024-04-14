@@ -31,4 +31,5 @@ pytest ./pytests
     - [x] SET
     - [x] INCR/DECR
     - [x] DELETE
+- [x] multiple clients working ok
     
