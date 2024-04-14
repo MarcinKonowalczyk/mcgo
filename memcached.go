@@ -484,14 +484,14 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		defer data_mu.Unlock()
 
 		// check if key exists
-		element, ok := data[key]
+		datum, ok := data[key]
 		if !ok {
 			conn.Write("NOT_FOUND")
 			return
 		}
 
 		// Pluck a number out of the data
-		numeric, err := strconv.Atoi(element.data)
+		numeric, err := strconv.Atoi(datum.data)
 		if err != nil {
 			conn.Write("CLIENT_ERROR cannot increment or decrement non-numeric value")
 			return
@@ -506,8 +506,8 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		new_data := strconv.Itoa(int(numeric))
 
 		data[key] = Data{
-			flags: element.flags,
-			expat: element.expat,
+			flags: datum.flags,
+			expat: datum.expat,
 			data:  new_data,
 		}
 
