@@ -22,10 +22,19 @@ const DEFAULT_PORT = 11211
 var verbose *bool
 
 type Data struct {
-	flags   int
-	exptime int
-	length  int
-	data    string
+	flags  int
+	expat  int64 // unix timestamp to expire at
+	length int
+	data   string
+}
+
+// Check if the datum has expired
+func (d Data) Expired() bool {
+	if d.expat == 0 {
+		return false
+	}
+	now := time.Now().Unix()
+	return now > d.expat
 }
 
 var data map[string]Data
@@ -305,14 +314,23 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		}
 
 		data_mu.Lock()
-		data, ok := data[key]
+		datum, ok := data[key]
 		data_mu.Unlock()
 		if !ok {
 			stats.get_misses++
 		} else {
-			conn.Write("VALUE " + key + " " + strconv.Itoa(data.flags) + " " + strconv.Itoa(data.length))
-			conn.Write(data.data)
-			stats.get_hits++
+			if datum.Expired() {
+				// datum is expired. throw it away and treat this as a miss
+				data_mu.Lock()
+				delete(data, key)
+				data_mu.Unlock()
+				stats.get_misses++
+			} else {
+				// we found the data. return it to the client
+				conn.Write("VALUE " + key + " " + strconv.Itoa(datum.flags) + " " + strconv.Itoa(datum.length))
+				conn.Write(datum.data)
+				stats.get_hits++
+			}
 		}
 
 		conn.Write("END")
@@ -335,8 +353,8 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		}
 
 		exptime, err := strconv.Atoi(message_parts[3])
-		if err != nil {
-			conn.Write("CLIENT_ERROR invalid exptime")
+		if err != nil || exptime < 0 {
+			conn.Write("CLIENT_ERROR invalid exptime. Must be a positive integer or 0")
 		}
 
 		// var _length string = message_parts[4]
@@ -353,11 +371,17 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 			}
 		}
 
+		now := time.Now().Unix()
+		expat := int64(0)
+		if exptime > 0 && int64(exptime) < now {
+			expat = now + int64(exptime)
+		}
+
 		new_data := Data{
-			flags:   flags,
-			exptime: exptime,
-			length:  length,
-			data:    "",
+			flags:  flags,
+			expat:  expat,
+			length: length,
+			data:   "",
 		}
 
 		data_mu.Lock()
@@ -469,10 +493,10 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		new_data := strconv.Itoa(int(numeric))
 
 		data[key] = Data{
-			flags:   element.flags,
-			exptime: element.exptime,
-			length:  len(new_data),
-			data:    new_data,
+			flags:  element.flags,
+			expat:  element.expat,
+			length: len(new_data),
+			data:   new_data,
 		}
 
 		if !noreply {
