@@ -499,17 +499,20 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		}
 		data_mu.Unlock()
 
+		// Make a copy to get the most accurate single-point stats
+		stats_copy := stats
+
 		conn.Write("STAT pid ", os.Getpid())
-		conn.Write("STAT uptime ", time.Since(stats.started).Seconds())
+		conn.Write("STAT uptime ", time.Since(stats_copy.started).Seconds())
 		conn.Write("STAT curr_items ", len(data))
-		conn.Write("STAT total_items ", stats.total_items)
+		conn.Write("STAT total_items ", stats_copy.total_items)
 		conn.Write("STAT bytes ", curr_bytes)
 		conn.Write("STAT curr_connections ", len(connections))
-		conn.Write("STAT total_connections ", stats.total_conns)
-		conn.Write("STAT cmd_get ", stats.get_cmds)
-		conn.Write("STAT cmd_set ", stats.set_cmds)
-		conn.Write("STAT get_hits ", stats.get_hits)
-		conn.Write("STAT get_misses ", stats.get_misses)
+		conn.Write("STAT total_connections ", stats_copy.total_conns)
+		conn.Write("STAT cmd_get ", stats_copy.get_cmds)
+		conn.Write("STAT cmd_set ", stats_copy.set_cmds)
+		conn.Write("STAT get_hits ", stats_copy.get_hits)
+		conn.Write("STAT get_misses ", stats_copy.get_misses)
 		conn.Write("END")
 
 	default:
