@@ -525,8 +525,6 @@ func handleMessageWithContinuation(message string, conn *Conn) {
 		panic("This function should not be called when a continuation is not expected")
 	}
 	switch conn.prev_message {
-	case GET:
-		log("GET continuation")
 	case SET:
 		log("SET continuation")
 		if conn.prev_key == "" {
@@ -554,7 +552,7 @@ func handleMessageWithContinuation(message string, conn *Conn) {
 		if !conn.prev_noreply {
 			conn.Write("STORED")
 		}
-	case DELETE, QUIT, VERSION:
+	case DELETE, QUIT, VERSION, GET:
 		panic(fmt.Sprintf("Unexpected continuation for message type %s", conn.prev_message))
 	default:
 		log("Message continuation for unknown message type:", conn.prev_message)
