@@ -423,7 +423,7 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		}
 
 		data_mu.Lock()
-		_, found := data[key]
+		datum, found := data[key]
 		if found {
 			delete(data, key)
 		}
@@ -435,9 +435,19 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 				conn.Write("NOT_FOUND")
 			}
 		} else {
-			log("Deleted key:", key)
-			if !noreply {
-				conn.Write("DELETED")
+			// We've already deleted the key, but the reply should depend on whether the key was expired
+			// or not.
+			if datum.Expired() {
+				log("Key expired:", key)
+				if !noreply {
+					conn.Write("NOT_FOUND")
+				}
+				return
+			} else {
+				log("Deleted key:", key)
+				if !noreply {
+					conn.Write("DELETED")
+				}
 			}
 		}
 
