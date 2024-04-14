@@ -34,11 +34,14 @@ type Data struct {
 
 // Check if the datum has expired
 func (d Data) Expired() bool {
+	return d.ExpiredAt(time.Now().Unix())
+}
 
+// Just like Expired, but takes a unix timestamp as argument
+func (d Data) ExpiredAt(now int64) bool {
 	if d.exptime == 0 {
 		return false
 	}
-	now := time.Now().Unix()
 	return now > (d.settime + int64(d.exptime))
 }
 
@@ -169,9 +172,10 @@ func expireDeamon() {
 		time.Sleep(EXPIRE_DAEMON_INTERVAL * time.Second)
 		N := 0
 		i := 0
+		now := time.Now().Unix()
 		data_mu.Lock()
 		for key, datum := range data {
-			if datum.Expired() {
+			if datum.ExpiredAt(now) {
 				delete(data, key)
 				N++
 			}
