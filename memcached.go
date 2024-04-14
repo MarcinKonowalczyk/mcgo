@@ -363,7 +363,6 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 			conn.Write("CLIENT_ERROR invalid exptime. Must be a positive integer or 0")
 		}
 
-		// var _length string = message_parts[4]
 		length, err := strconv.Atoi(message_parts[4])
 		if err != nil {
 			conn.Write("CLIENT_ERROR invalid length")
@@ -384,6 +383,7 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 			data:    strings.Repeat(" ", length),
 		}
 
+		// Replace the data in the map
 		data_mu.Lock()
 		_, found := data[key]
 		data[key] = new_data
@@ -421,9 +421,7 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 
 		data_mu.Lock()
 		datum, found := data[key]
-		if found {
-			delete(data, key)
-		}
+		delete(data, key)
 		data_mu.Unlock()
 
 		if !found {
