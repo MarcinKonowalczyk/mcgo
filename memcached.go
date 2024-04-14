@@ -22,18 +22,20 @@ const DEFAULT_PORT = 11211
 var verbose *bool
 
 type Data struct {
-	flags int
-	expat int64 // unix timestamp to expire at
-	data  string
+	flags   int
+	settime int64 // unix timestamp when set
+	exptime int
+	data    string
 }
 
 // Check if the datum has expired
 func (d Data) Expired() bool {
-	if d.expat == 0 {
+
+	if d.exptime == 0 {
 		return false
 	}
 	now := time.Now().Unix()
-	return now > d.expat
+	return now > (d.settime + int64(d.exptime))
 }
 
 // Return the length of the data
@@ -375,16 +377,11 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 			}
 		}
 
-		now := time.Now().Unix()
-		expat := int64(0)
-		if exptime > 0 && int64(exptime) < now {
-			expat = now + int64(exptime)
-		}
-
 		new_data := Data{
-			flags: flags,
-			expat: expat,
-			data:  strings.Repeat(" ", length),
+			flags:   flags,
+			exptime: exptime,
+			settime: time.Now().Unix(),
+			data:    strings.Repeat(" ", length),
 		}
 
 		data_mu.Lock()
@@ -513,9 +510,10 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		new_data := strconv.Itoa(int(numeric))
 
 		data[key] = Data{
-			flags: datum.flags,
-			expat: datum.expat,
-			data:  new_data,
+			flags:   datum.flags,
+			exptime: datum.exptime,
+			settime: datum.settime, // INCR/DECR does not change the set time
+			data:    new_data,
 		}
 
 		if !noreply {
