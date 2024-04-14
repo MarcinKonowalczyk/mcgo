@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/galsondor/go-ascii"
@@ -28,6 +29,7 @@ type Data struct {
 }
 
 var data map[string]Data
+var data_mu sync.Mutex
 
 // enum for message types
 type MessageType string
@@ -74,6 +76,7 @@ func (conn Conn) Close() {
 }
 
 var connections map[string]Conn
+var connection_mu sync.Mutex
 
 func newConn(net_conn net.Conn, id string) Conn {
 	return Conn{
@@ -118,8 +121,12 @@ func main() {
 
 	log("Starting memcached server")
 
-	connections = make(map[string]Conn)
 	data = make(map[string]Data)
+	data_mu = sync.Mutex{}
+
+	connections = make(map[string]Conn)
+	connection_mu = sync.Mutex{}
+
 	stats = newStats(time.Now())
 
 	portListen(*port)
@@ -153,7 +160,9 @@ func portListen(port int) {
 
 		connection_id := net_conn.RemoteAddr().String()
 		conn := newConn(net_conn, connection_id)
+		connection_mu.Lock()
 		connections[connection_id] = conn
+		connection_mu.Unlock()
 
 		go handleConnection(conn)
 	}
@@ -166,7 +175,11 @@ func handleConnection(conn Conn) {
 
 	// close connection when this function ends
 	defer log("Connection from", conn.id, "closed")
-	defer delete(connections, conn.id)
+	defer func() {
+		connection_mu.Lock()
+		delete(connections, conn.id)
+		connection_mu.Unlock()
+	}()
 	defer conn.Close()
 
 	// Increment connection stats
@@ -291,7 +304,9 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 			panic("Key cannot be empty. This should not happen.")
 		}
 
+		data_mu.Lock()
 		data, ok := data[key]
+		data_mu.Unlock()
 		if !ok {
 			stats.get_misses++
 		} else {
@@ -338,16 +353,23 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 			}
 		}
 
-		if _, ok := data[key]; !ok {
-			// new key
-			stats.total_items++
-		}
-
-		data[key] = Data{
+		new_data := Data{
 			flags:   flags,
 			exptime: exptime,
 			length:  length,
 			data:    "",
+		}
+
+		data_mu.Lock()
+		_, found := data[key]
+		data[key] = new_data
+		data_mu.Unlock()
+
+		if found {
+			// key already existed and got swapped
+		} else {
+			// new key
+			stats.total_items++
 		}
 
 		conn.prev_message = SET
@@ -373,14 +395,20 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 			}
 		}
 
-		if _, ok := data[key]; !ok {
+		data_mu.Lock()
+		_, found := data[key]
+		if found {
+			delete(data, key)
+		}
+		data_mu.Unlock()
+
+		if !found {
 			log("Key not found:", key)
 			if !noreply {
 				conn.Write("NOT_FOUND")
 			}
 		} else {
-			log("Deleting key:", key)
-			delete(data, key)
+			log("Deleted key:", key)
 			if !noreply {
 				conn.Write("DELETED")
 			}
@@ -413,6 +441,10 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 				noreply = true
 			}
 		}
+
+		// We have to manually lock the data map because we are reading and writing in two steps
+		data_mu.Lock()
+		defer data_mu.Unlock()
 
 		// check if key exists
 		element, ok := data[key]
@@ -461,16 +493,18 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		log("STATS message")
 
 		curr_bytes := 0
+		data_mu.Lock()
 		for _, d := range data {
 			curr_bytes += d.length
 		}
+		data_mu.Unlock()
 
 		conn.Write("STAT pid ", os.Getpid())
 		conn.Write("STAT uptime ", time.Since(stats.started).Seconds())
 		conn.Write("STAT curr_items ", len(data))
 		conn.Write("STAT total_items ", stats.total_items)
 		conn.Write("STAT bytes ", curr_bytes)
-		conn.Write("STAT curr_connections ", len(connections)-1) // ignore listening conn
+		conn.Write("STAT curr_connections ", len(connections))
 		conn.Write("STAT total_connections ", stats.total_conns)
 		conn.Write("STAT cmd_get ", stats.get_cmds)
 		conn.Write("STAT cmd_set ", stats.set_cmds)
@@ -495,21 +529,23 @@ func handleMessageWithContinuation(message string, conn *Conn) {
 		if conn.prev_key == "" {
 			panic("Previous key is empty. This should not happen.")
 		}
-		// check prev key is in data map
-		if _, ok := data[conn.prev_key]; !ok {
+
+		data_mu.Lock()
+		defer data_mu.Unlock()
+		datum, ok := data[conn.prev_key]
+		if !ok {
 			log("Key not found:", conn.prev_key)
 			panic("Key not found")
 		}
 
-		datum := data[conn.prev_key]
-		if len(datum.data) < datum.length {
-			datum.data += message
-			data[conn.prev_key] = datum
-		} else {
-			// data too long
+		if len(datum.data) > datum.length {
 			log("Data too long for key:", conn.prev_key)
 			panic("Data too long for key")
 		}
+
+		datum.data += message
+		data[conn.prev_key] = datum
+
 		conn.expect_continuation = false
 
 		if !conn.prev_noreply {
