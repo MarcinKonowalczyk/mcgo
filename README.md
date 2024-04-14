@@ -18,6 +18,7 @@ pytest ./pytests
 # ToDo's
 
 - [ ] expire items
+- [ ] reset stats, and then use it in tests
 - [ ] LRU eviction
 - [ ] distributed... ?
 
