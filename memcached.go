@@ -16,6 +16,10 @@ import (
 
 const DEFAULT_PORT = 11211
 
+const EXPIRE_DAEMON_INTERVAL = 2 // seconds
+
+const EXPIRE_DAEMON_MAX_KEYS = 100 // max number of keys to check in one iteration
+
 // store all connections in a map
 
 // verbose mode of the server (print log messages)
@@ -23,9 +27,27 @@ var verbose *bool
 
 type Data struct {
 	flags   int
+	settime int64 // unix timestamp when set
 	exptime int
-	length  int
 	data    string
+}
+
+// Check if the datum has expired
+func (d Data) Expired() bool {
+	return d.ExpiredAt(time.Now().Unix())
+}
+
+// Just like Expired, but takes a unix timestamp as argument
+func (d Data) ExpiredAt(now int64) bool {
+	if d.exptime == 0 {
+		return false
+	}
+	return now > (d.settime + int64(d.exptime))
+}
+
+// Return the length of the data
+func (d Data) Length() int {
+	return len(d.data)
 }
 
 var data map[string]Data
@@ -129,6 +151,8 @@ func main() {
 
 	stats = newStats(time.Now())
 
+	go expireDeamon()
+
 	portListen(*port)
 }
 
@@ -140,6 +164,30 @@ func log(a ...any) {
 		b[1] = now.Format("2006-01-02 15:04:05")
 		copy(b[2:], a)
 		fmt.Println(b...)
+	}
+}
+
+func expireDeamon() {
+	for {
+		time.Sleep(EXPIRE_DAEMON_INTERVAL * time.Second)
+		N := 0
+		i := 0
+		now := time.Now().Unix()
+		data_mu.Lock()
+		for key, datum := range data {
+			if datum.ExpiredAt(now) {
+				delete(data, key)
+				N++
+			}
+			i++
+			if i >= EXPIRE_DAEMON_MAX_KEYS {
+				break
+			}
+		}
+		data_mu.Unlock()
+		if N > 0 {
+			log("Expire daemon deleted", N, "expired keys")
+		}
 	}
 }
 
@@ -305,14 +353,23 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		}
 
 		data_mu.Lock()
-		data, ok := data[key]
+		datum, ok := data[key]
 		data_mu.Unlock()
 		if !ok {
 			stats.get_misses++
 		} else {
-			conn.Write("VALUE " + key + " " + strconv.Itoa(data.flags) + " " + strconv.Itoa(data.length))
-			conn.Write(data.data)
-			stats.get_hits++
+			if datum.Expired() {
+				// datum is expired. throw it away and treat this as a miss
+				data_mu.Lock()
+				delete(data, key)
+				data_mu.Unlock()
+				stats.get_misses++
+			} else {
+				// we found the data. return it to the client
+				conn.Write("VALUE " + key + " " + strconv.Itoa(datum.flags) + " " + strconv.Itoa(datum.Length()))
+				conn.Write(datum.data)
+				stats.get_hits++
+			}
 		}
 
 		conn.Write("END")
@@ -335,11 +392,10 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		}
 
 		exptime, err := strconv.Atoi(message_parts[3])
-		if err != nil {
-			conn.Write("CLIENT_ERROR invalid exptime")
+		if err != nil || exptime < 0 {
+			conn.Write("CLIENT_ERROR invalid exptime. Must be a positive integer or 0")
 		}
 
-		// var _length string = message_parts[4]
 		length, err := strconv.Atoi(message_parts[4])
 		if err != nil {
 			conn.Write("CLIENT_ERROR invalid length")
@@ -356,10 +412,11 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		new_data := Data{
 			flags:   flags,
 			exptime: exptime,
-			length:  length,
-			data:    "",
+			settime: time.Now().Unix(),
+			data:    strings.Repeat(" ", length),
 		}
 
+		// Replace the data in the map
 		data_mu.Lock()
 		_, found := data[key]
 		data[key] = new_data
@@ -396,10 +453,8 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		}
 
 		data_mu.Lock()
-		_, found := data[key]
-		if found {
-			delete(data, key)
-		}
+		datum, found := data[key]
+		delete(data, key)
 		data_mu.Unlock()
 
 		if !found {
@@ -408,9 +463,19 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 				conn.Write("NOT_FOUND")
 			}
 		} else {
-			log("Deleted key:", key)
-			if !noreply {
-				conn.Write("DELETED")
+			// We've already deleted the key, but the reply should depend on whether the key was expired
+			// or not.
+			if datum.Expired() {
+				log("Key expired:", key)
+				if !noreply {
+					conn.Write("NOT_FOUND")
+				}
+				return
+			} else {
+				log("Deleted key:", key)
+				if !noreply {
+					conn.Write("DELETED")
+				}
 			}
 		}
 
@@ -447,14 +512,21 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		defer data_mu.Unlock()
 
 		// check if key exists
-		element, ok := data[key]
+		datum, ok := data[key]
 		if !ok {
 			conn.Write("NOT_FOUND")
 			return
 		}
 
+		// check if key is expired
+		if datum.Expired() {
+			delete(data, key)
+			conn.Write("NOT_FOUND")
+			return
+		}
+
 		// Pluck a number out of the data
-		numeric, err := strconv.Atoi(element.data)
+		numeric, err := strconv.Atoi(datum.data)
 		if err != nil {
 			conn.Write("CLIENT_ERROR cannot increment or decrement non-numeric value")
 			return
@@ -469,9 +541,9 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		new_data := strconv.Itoa(int(numeric))
 
 		data[key] = Data{
-			flags:   element.flags,
-			exptime: element.exptime,
-			length:  len(new_data),
+			flags:   datum.flags,
+			exptime: datum.exptime,
+			settime: datum.settime, // INCR/DECR does not change the set time
 			data:    new_data,
 		}
 
@@ -495,7 +567,7 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		curr_bytes := 0
 		data_mu.Lock()
 		for _, d := range data {
-			curr_bytes += d.length
+			curr_bytes += d.Length()
 		}
 		data_mu.Unlock()
 
@@ -525,8 +597,6 @@ func handleMessageWithContinuation(message string, conn *Conn) {
 		panic("This function should not be called when a continuation is not expected")
 	}
 	switch conn.prev_message {
-	case GET:
-		log("GET continuation")
 	case SET:
 		log("SET continuation")
 		if conn.prev_key == "" {
@@ -541,12 +611,14 @@ func handleMessageWithContinuation(message string, conn *Conn) {
 			panic("Key not found")
 		}
 
-		if len(datum.data) > datum.length {
+		if len(datum.data) > datum.Length() {
 			log("Data too long for key:", conn.prev_key)
 			panic("Data too long for key")
 		}
 
-		datum.data += message
+		// NOTE: Pad the data with spaces if it is too short.
+		pad_len := datum.Length() - len(datum.data)
+		datum.data = message + strings.Repeat(" ", pad_len)
 		data[conn.prev_key] = datum
 
 		conn.expect_continuation = false
@@ -554,7 +626,7 @@ func handleMessageWithContinuation(message string, conn *Conn) {
 		if !conn.prev_noreply {
 			conn.Write("STORED")
 		}
-	case DELETE, QUIT, VERSION:
+	case DELETE, QUIT, VERSION, GET:
 		panic(fmt.Sprintf("Unexpected continuation for message type %s", conn.prev_message))
 	default:
 		log("Message continuation for unknown message type:", conn.prev_message)

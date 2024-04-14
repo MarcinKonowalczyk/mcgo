@@ -18,7 +18,7 @@ data = {random_string(10): random_string(10).encode() for _ in range(N)}
 
 time_start = time.time()
 for key, value in data.items():
-    client.set(key, value)
+    client.set(key, value, expire=2)
 time_end = time.time()
 write_time = time_end - time_start
 writes_per_second = N / write_time
