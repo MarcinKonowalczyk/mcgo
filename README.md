@@ -24,6 +24,7 @@ pytest ./pytests
 
 - [ ] tests in other python libraries
 - [ ] go tests
+- [ ] memory limit
 
 # Done's
 

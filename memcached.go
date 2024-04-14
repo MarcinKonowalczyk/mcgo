@@ -16,6 +16,10 @@ import (
 
 const DEFAULT_PORT = 11211
 
+const EXPIRE_DAEMON_INTERVAL = 2 // seconds
+
+const EXPIRE_DAEMON_MAX_KEYS = 100 // max number of keys to check in one iteration
+
 // store all connections in a map
 
 // verbose mode of the server (print log messages)
@@ -144,6 +148,8 @@ func main() {
 
 	stats = newStats(time.Now())
 
+	go expireDeamon()
+
 	portListen(*port)
 }
 
@@ -155,6 +161,29 @@ func log(a ...any) {
 		b[1] = now.Format("2006-01-02 15:04:05")
 		copy(b[2:], a)
 		fmt.Println(b...)
+	}
+}
+
+func expireDeamon() {
+	for {
+		time.Sleep(EXPIRE_DAEMON_INTERVAL * time.Second)
+		N := 0
+		i := 0
+		data_mu.Lock()
+		for key, datum := range data {
+			if datum.Expired() {
+				delete(data, key)
+				N++
+			}
+			i++
+			if i >= EXPIRE_DAEMON_MAX_KEYS {
+				break
+			}
+		}
+		data_mu.Unlock()
+		if N > 0 {
+			log("Expire daemon deleted", N, "expired keys")
+		}
 	}
 }
 
