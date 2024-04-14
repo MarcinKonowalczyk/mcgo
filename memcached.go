@@ -22,10 +22,9 @@ const DEFAULT_PORT = 11211
 var verbose *bool
 
 type Data struct {
-	flags  int
-	expat  int64 // unix timestamp to expire at
-	length int
-	data   string
+	flags int
+	expat int64 // unix timestamp to expire at
+	data  string
 }
 
 // Check if the datum has expired
@@ -35,6 +34,11 @@ func (d Data) Expired() bool {
 	}
 	now := time.Now().Unix()
 	return now > d.expat
+}
+
+// Return the length of the data
+func (d Data) Length() int {
+	return len(d.data)
 }
 
 var data map[string]Data
@@ -327,7 +331,7 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 				stats.get_misses++
 			} else {
 				// we found the data. return it to the client
-				conn.Write("VALUE " + key + " " + strconv.Itoa(datum.flags) + " " + strconv.Itoa(datum.length))
+				conn.Write("VALUE " + key + " " + strconv.Itoa(datum.flags) + " " + strconv.Itoa(datum.Length()))
 				conn.Write(datum.data)
 				stats.get_hits++
 			}
@@ -378,10 +382,9 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		}
 
 		new_data := Data{
-			flags:  flags,
-			expat:  expat,
-			length: length,
-			data:   "",
+			flags: flags,
+			expat: expat,
+			data:  strings.Repeat(" ", length),
 		}
 
 		data_mu.Lock()
@@ -493,10 +496,9 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		new_data := strconv.Itoa(int(numeric))
 
 		data[key] = Data{
-			flags:  element.flags,
-			expat:  element.expat,
-			length: len(new_data),
-			data:   new_data,
+			flags: element.flags,
+			expat: element.expat,
+			data:  new_data,
 		}
 
 		if !noreply {
@@ -519,7 +521,7 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 		curr_bytes := 0
 		data_mu.Lock()
 		for _, d := range data {
-			curr_bytes += d.length
+			curr_bytes += d.Length()
 		}
 		data_mu.Unlock()
 
@@ -563,12 +565,14 @@ func handleMessageWithContinuation(message string, conn *Conn) {
 			panic("Key not found")
 		}
 
-		if len(datum.data) > datum.length {
+		if len(datum.data) > datum.Length() {
 			log("Data too long for key:", conn.prev_key)
 			panic("Data too long for key")
 		}
 
-		datum.data += message
+		// NOTE: Pad the data with spaces if it is too short.
+		pad_len := datum.Length() - len(datum.data)
+		datum.data = message + strings.Repeat(" ", pad_len)
 		data[conn.prev_key] = datum
 
 		conn.expect_continuation = false
