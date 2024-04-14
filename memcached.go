@@ -490,6 +490,13 @@ func handleMessageWithoutContinuation(message string, conn *Conn) {
 			return
 		}
 
+		// check if key is expired
+		if datum.Expired() {
+			delete(data, key)
+			conn.Write("NOT_FOUND")
+			return
+		}
+
 		// Pluck a number out of the data
 		numeric, err := strconv.Atoi(datum.data)
 		if err != nil {
