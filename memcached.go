@@ -10,8 +10,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/galsondor/go-ascii"
 )
 
 const DEFAULT_PORT = 11211
@@ -20,7 +18,48 @@ const EXPIRE_DAEMON_INTERVAL = 2 // seconds
 
 const EXPIRE_DAEMON_MAX_KEYS = 100 // max number of keys to check in one iteration
 
-// store all connections in a map
+const (
+	NUL = 0x00 // '\0' Null
+	SOH = 0x01 //      Start of Header
+	STX = 0x02 //      Start of Text
+	ETX = 0x03 //      End of Text
+	EOT = 0x04 //      End of Transmission
+	ENQ = 0x05 //      Enquiry
+	ACK = 0x06 //      Acknowledgement
+	BEL = 0x07 // '\a' Bell
+	BS  = 0x08 // '\b' Backspace
+	HT  = 0x09 // '\t' Horizontal Tab
+	LF  = 0x0A // '\n' Line Feed
+	VT  = 0x0B // '\v' Verical Tab
+	FF  = 0x0C // '\f' Form Feed
+	CR  = 0x0D // '\r' Carriage Return
+	SO  = 0x0E //      Shift Out
+	SI  = 0x0F //      Shift In
+	DLE = 0x10 //      Device Idle
+	DC1 = 0x11 //      Device Control 1
+	DC2 = 0x12 //      Device Control 2
+	DC3 = 0x13 //      Device Control 3
+	DC4 = 0x14 //      Device Control 4
+	NAK = 0x15 //      Negative Acknoledgement
+	SYN = 0x16 //      Synchronize
+	ETB = 0x17 //      End of Transmission Block
+	CAN = 0x18 //      Cancel
+	EM  = 0x19 //      End of Medium
+	SUB = 0x1A //      Substitute
+	ESC = 0x1B // '\e' Escape
+	FS  = 0x1C //      Field Separator
+	GS  = 0x1D //      Group Separator
+	RS  = 0x1E //      Record Separator
+	US  = 0x1F //      Unit Separator
+	SP  = 0x20 //      Space
+	TIL = 0x7E //      Tilde - last printable ASCII character
+	DEL = 0x7F //      Delete
+)
+
+func IsPrint(c byte) bool {
+	// Printable ASCII characters are in the range 0x20 (32) to 0x7E (126)
+	return c >= SP && c <= TIL
+}
 
 // verbose mode of the server (print log messages)
 var verbose *bool
@@ -261,7 +300,7 @@ func handleConnection(conn Conn) {
 		message := buf[0:n]
 		if len(message) < 2 {
 			// Still have to check for Ctrl-C or Ctrl-D
-			if len(message) == 1 && (message[0] == ascii.ACK || message[0] == ascii.EOT) {
+			if len(message) == 1 && (message[0] == ACK || message[0] == EOT) {
 				// Ctrl-C or Ctrl-D
 				log("Client closed connection")
 				break
@@ -270,7 +309,7 @@ func handleConnection(conn Conn) {
 		}
 		byte_m1 := message[len(message)-1]
 		byte_m2 := message[len(message)-2]
-		if byte_m2 == ascii.CR && byte_m1 == ascii.LF {
+		if byte_m2 == CR && byte_m1 == LF {
 			message = message[0 : len(message)-2]
 			if len(message) == 0 {
 				continue
@@ -278,7 +317,7 @@ func handleConnection(conn Conn) {
 
 			any_non_printable := false
 			for _, b := range message {
-				if !(ascii.IsPrint(b) || b == ascii.CR || b == ascii.LF) {
+				if !(IsPrint(b) || b == CR || b == LF) {
 					any_non_printable = true
 					break
 				}
@@ -290,7 +329,7 @@ func handleConnection(conn Conn) {
 			}
 
 			// split message on \r\n
-			messages := bytes.Split(message, []byte{ascii.CR, ascii.LF})
+			messages := bytes.Split(message, []byte{CR, LF})
 
 			if len(messages) > 1 {
 				log("Multiple messages received:")
@@ -307,7 +346,7 @@ func handleConnection(conn Conn) {
 
 		} else {
 			// Message is not terminated by \r\n
-			if byte_m1 == ascii.ACK || byte_m1 == ascii.EOT {
+			if byte_m1 == ACK || byte_m1 == EOT {
 				// Ctrl-C or Ctrl-D
 				log("Client closed connection")
 				break
